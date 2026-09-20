@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        /* Design tokens — La Maison d'Auben (modifiables globalement) */
+        --bg-main: #FAF8F5;
+        --bg-card: #FFFFFF;
+        --bg-alt: #F2EDE4;
+        --text-primary: #2C332E;
+        --text-muted: #626D66;
+        --primary-deep: #1E3A2B;
+        --primary-medium: #3B6B4C;
+        --primary-light: #EAF0EC;
+        --accent-sage: #87A987;
+        --accent-gold: #D4A359;
+        --border-subtle: #E2DDD5;
+        --border-focus: #3B6B4C;
+
+        /* shadcn tokens mapped to the brand palette */
+        --background: 40 33% 97%;
+        --foreground: 140 6% 19%;
+        --card: 0 0% 100%;
+        --card-foreground: 140 6% 19%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 140 6% 19%;
+        --primary: 142 32% 17%;
+        --primary-foreground: 40 33% 97%;
+        --secondary: 138 18% 92%;
+        --secondary-foreground: 142 32% 17%;
+        --muted: 38 28% 92%;
+        --muted-foreground: 140 6% 41%;
+        --accent: 138 18% 92%;
+        --accent-foreground: 142 32% 17%;
+        --destructive: 0 72% 45%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 36 20% 86%;
+        --input: 36 20% 86%;
+        --ring: 143 30% 33%;
+        --chart-1: 142 32% 17%;
+        --chart-2: 143 30% 33%;
+        --chart-3: 120 17% 60%;
+        --chart-4: 36 58% 59%;
+        --chart-5: 38 28% 80%;
+        --radius: 0.9rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    html {
+        scroll-behavior: smooth;
+    }
+    body {
+        margin: 0;
+        background-color: var(--bg-main);
+        color: var(--text-primary);
+        font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+    h1, h2, h3, h4, .font-serif {
+        font-family: "Playfair Display", Georgia, serif;
+    }
+    ::selection {
+        background: var(--primary-medium);
+        color: #fff;
+    }
+}
+
+@layer utilities {
+    .font-serif { font-family: "Playfair Display", Georgia, serif; }
+    .font-sans { font-family: "Plus Jakarta Sans", ui-sans-serif, sans-serif; }
+    .container-app { @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8; }
+    .eyebrow {
+        @apply text-xs font-semibold tracking-[0.18em] uppercase text-[#3B6B4C];
+    }
+    .card-soft {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: 1rem;
+        box-shadow: 0 2px 12px rgba(30, 58, 43, 0.04);
+    }
+    .grain::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+        pointer-events: none;
+    }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg-alt); }
+::-webkit-scrollbar-thumb { background: var(--accent-sage); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary-medium); }
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}

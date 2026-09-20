@@ -1,0 +1,110 @@
+{
+  "brand_identity": {
+    "name": "La Maison d'Auben",
+    "wordplay": "Aurélie + Ben ('Auben') with wordplay on 'aubaine' (godsend/a good deal)",
+    "tagline": "L'aubaine pour mieux s'organiser.",
+    "philosophy": "Simple à comprendre. Agréable à utiliser. Beau à regarder. Utile au quotidien.",
+    "vibe": "Warm, human, premium without being pretentious, modern without feeling like a cold tech SaaS. Organic & Earthy meets refined French editorial aesthetic."
+  },
+  "typography": {
+    "font_families": {
+      "heading": "'Playfair Display', 'Cormorant Garamond', 'Cabinet Grotesk', serif",
+      "body": "'Plus Jakarta Sans', 'DM Sans', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "scale": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-serif font-bold tracking-tight text-[#1E3A2B]",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-serif font-semibold tracking-tight text-[#1E3A2B]",
+      "h3": "text-xl sm:text-2xl font-serif font-semibold text-[#1E3A2B]",
+      "h4": "text-lg sm:text-xl font-sans font-semibold text-[#2C332E]",
+      "body": "text-base font-sans leading-relaxed text-[#2C332E]",
+      "body_small": "text-sm font-sans leading-relaxed text-[#626D66]",
+      "caption": "text-xs font-sans tracking-wider uppercase font-medium text-[#3B6B4C]"
+    }
+  },
+  "colors": {
+    "css_variables": {
+      "--bg-main": "#FAF8F5",
+      "--bg-card": "#FFFFFF",
+      "--bg-alt": "#F2EDE4",
+      "--text-primary": "#2C332E",
+      "--text-muted": "#626D66",
+      "--primary-deep": "#1E3A2B",
+      "--primary-medium": "#3B6B4C",
+      "--primary-light": "#EAF0EC",
+      "--accent-sage": "#87A987",
+      "--accent-gold": "#D4A359",
+      "--border-subtle": "#E2DDD5",
+      "--border-focus": "#3B6B4C"
+    },
+    "palette": {
+      "deep_forest_green": "#1E3A2B",
+      "medium_leaf_green": "#3B6B4C",
+      "soft_sage_green": "#87A987",
+      "sage_light_bg": "#EAF0EC",
+      "warm_cream": "#FAF8F5",
+      "light_sand_beige": "#F2EDE4",
+      "border_stone": "#E2DDD5",
+      "dark_charcoal_text": "#2C332E",
+      "muted_olive_text": "#626D66",
+      "pure_white": "#FFFFFF"
+    }
+  },
+  "spacing_and_layout": {
+    "container_max_width": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "card_padding": "p-6 sm:p-8",
+    "section_spacing": "py-12 sm:py-20 lg:py-24",
+    "grid_gap": "gap-6 sm:gap-8 lg:gap-10",
+    "bento_grid_style": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"
+  },
+  "component_styling": {
+    "card": {
+      "base": "bg-white rounded-2xl border border-[#E2DDD5] shadow-[0_2px_12px_rgba(30,58,43,0.04)] hover:shadow-[0_8px_24px_rgba(30,58,43,0.08)] transition-all duration-300 p-6 sm:p-8"
+    },
+    "button_primary": {
+      "base": "bg-[#1E3A2B] hover:bg-[#3B6B4C] text-[#FAF8F5] font-sans font-medium px-6 py-3.5 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98] inline-flex items-center justify-center gap-2 text-base"
+    },
+    "button_secondary": {
+      "base": "bg-[#EAF0EC] hover:bg-[#1E3A2B] text-[#1E3A2B] hover:text-[#FAF8F5] font-sans font-medium px-6 py-3.5 rounded-xl transition-all duration-200 border border-[#87A987]/30 inline-flex items-center justify-center gap-2 text-base"
+    },
+    "badge": {
+      "base": "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-[#EAF0EC] text-[#1E3A2B] border border-[#87A987]/30"
+    },
+    "header_nav": {
+      "base": "sticky top-0 z-50 bg-[#FAF8F5]/85 backdrop-blur-md border-b border-[#E2DDD5]/60 transition-all duration-200"
+    },
+    "input_field": {
+      "base": "w-full bg-white border border-[#E2DDD5] rounded-xl px-4 py-3 text-[#2C332E] placeholder-[#626D66]/60 focus:outline-none focus:ring-2 focus:ring-[#3B6B4C] focus:border-transparent transition-all"
+    }
+  },
+  "motion": {
+    "transition_default": "transition-all duration-300 ease-out",
+    "hover_lift": "hover:-translate-y-1 transition-transform duration-300",
+    "framer_fade_in": {
+      "initial": { "opacity": 0, "y": 16 },
+      "animate": { "opacity": 1, "y": 0 },
+      "transition": { "duration": 0.4, "ease": "easeOut" }
+    }
+  },
+  "image_urls": {
+    "hero_workspace": "https://images.pexels.com/photos/12700769/pexels-photo-12700769.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "minimal_desk_plant": "https://images.unsplash.com/photo-1649119162006-304b172c12d8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwzfHxtaW5pbWFsaXN0JTIwaG9tZSUyMHdvcmtzcGFjZSUyMHBsYW50JTIwam91cm5hbCUyMGxhcHRvcHxlbnwwfHx8fDE3ODk5MzI3ODZ8MA&ixlib=rb-4.1.0&q=85",
+    "cozy_desk_laptop": "https://images.unsplash.com/photo-1736576660063-854d978613cd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHw0fHxjb3p5JTIwZGVzayUyMGxhcHRvcCUyMG9yZ2FuaXphdGlvbiUyMG5vdGVib29rJTIwYWVzdGhldGljc3xlbnwwfHx8fDE3ODk5MzI3ODZ8MA&ixlib=rb-4.1.0&q=85",
+    "planner_coffee": "https://images.unsplash.com/photo-1564510714747-69c3bc1fab41?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwyfHxwbGFubmVyJTIwY29mZmVlJTIwZGVzayUyMGxpZmVzdHlsZSUyMG1vcm5pbmd8ZW58MHx8fHwxNzg5OTMyNzg2fDA&ixlib=rb-4.1.0&q=85",
+    "organized_flatlay": "https://images.pexels.com/photos/8251157/pexels-photo-8251157.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "bright_clean_workspace": "https://images.pexels.com/photos/442574/pexels-photo-442574.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+  },
+  "instructions_to_main_agent": [
+    "Use French language consistently across all views (Homepage, Boutique, Fiche Produit, Panier, Checkout, Confirmation, Blog, À propos, Admin).",
+    "Ensure all interactive elements have explicit data-testid attributes (e.g., data-testid='hero-cta-button', data-testid='product-card-1', data-testid='checkout-submit-btn').",
+    "Apply CSS variables in index.css so colors can be tweaked globally.",
+    "First product is 'Budget mensuel Excel' priced at 7,99 € with features like instant download, automated charts, dual device support, and multi-currency support.",
+    "Do NOT use transparent backgrounds on header or dropdown overlays.",
+    "Keep buttons legible with solid background colors and warm rounded corners (rounded-xl)."
+  ],
+  "GENERAL UI UX DESIGN GUIDELINES": {
+    "accessibility": "Ensure contrast ratio exceeds 4.5:1 for body text against backgrounds. Focus states must have distinct outline ring.",
+    "testing": "All key user action buttons and form inputs must have role-based data-testid attributes.",
+    "responsive": "Mobile-first approach with fluid grid and clean drawer navigation for screens below 768px."
+  }
+}

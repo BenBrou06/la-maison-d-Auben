@@ -598,17 +598,9 @@ async def seed():
         })
     elif not verify_password(admin_pw, existing.get("password_hash", "")):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_pw)}})
-    # Products (available)
+    # Products (available) — insert once, ne jamais écraser les éditions admin
     for p in seed_data.PRODUCTS:
-        existing_p = await db.products.find_one({"slug": p["slug"]})
-        base = {**p, "created_at": now_iso()}
-        if existing_p:
-            base.pop("created_at", None)
-            # keep uploaded file/image references if any
-            base.pop("gallery", None) if existing_p.get("gallery") else None
-            await db.products.update_one({"slug": p["slug"]}, {"$set": base})
-        else:
-            await db.products.insert_one(base)
+        await db.products.update_one({"slug": p["slug"]}, {"$setOnInsert": {**p, "created_at": now_iso()}}, upsert=True)
     # Coming soon products
     for p in seed_data.COMING_SOON:
         await db.products.update_one({"slug": p["slug"]}, {"$setOnInsert": {**p, "created_at": now_iso()}}, upsert=True)

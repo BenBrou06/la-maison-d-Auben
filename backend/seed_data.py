@@ -30,8 +30,8 @@ CATEGORIES = [
      "description": "Organisez votre foyer et votre quotidien."},
     {"slug": "automobile", "name": "Automobile", "icon": "Car", "order": 4,
      "description": "Suivez le vrai coût de votre véhicule."},
-    {"slug": "investissement", "name": "Investissement", "icon": "TrendingUp", "order": 5,
-     "description": "Suivez et comprenez vos placements."},
+    {"slug": "sport", "name": "Sport", "icon": "Dumbbell", "order": 5,
+     "description": "Suivez vos entraînements et vos progrès."},
     {"slug": "couple", "name": "Couple", "icon": "Heart", "order": 6,
      "description": "Gérez vos projets et votre budget à deux."},
     {"slug": "lifestyle", "name": "Lifestyle", "icon": "Backpack", "order": 7,
@@ -107,6 +107,8 @@ COMING_SOON = [
      "short_description": "Préparez votre premier appartement sereinement.", "price": None},
     {"slug": "budget-couple", "name": "Budget Couple", "category_slug": "couple", "status": "coming_soon",
      "short_description": "Gérez votre budget à deux, en toute transparence.", "price": None},
+    {"slug": "suivi-sportif", "name": "Suivi sportif", "category_slug": "sport", "status": "coming_soon",
+     "short_description": "Planifiez vos séances et suivez vos progrès semaine après semaine.", "price": None},
 ]
 
 ARTICLES = [

@@ -247,6 +247,35 @@ class TestTaxInclusiveAndOwnerNotified:
         r2 = s.get(f"{API}/payments/status/{sid}")
         assert r2.status_code == 200
 
+    def test_download_bogus_token_returns_404(self, s):
+        """Random unknown download token must return 404 (not bypassable)."""
+        r = s.get(f"{API}/download/bogus-token-{int(time.time())}-xyz")
+        assert r.status_code == 404, f"Expected 404 for bogus token, got {r.status_code}"
+
+    def test_paid_xlsx_not_served_via_media_endpoint(self, s):
+        """The paid budget-mensuel .xlsx must NOT be downloadable via public /api/media/*.
+        Only images live in db.media; digital-product files must only be reachable through /api/download/{token}.
+        """
+        # Path known from spec + also derived from product record.
+        paths_to_check = [
+            "maison-auben/files/budget-mensuel/3dca6781-e5c9-4e5b-b153-b099efdd264c.xlsx",
+        ]
+        # Discover current stored path from the admin product record if possible
+        try:
+            r_admin = s.post(f"{API}/admin/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+            token = r_admin.json().get("access_token")
+            if token:
+                r_prod = s.get(f"{API}/admin/products", headers={"Authorization": f"Bearer {token}"})
+                if r_prod.status_code == 200:
+                    for p in r_prod.json():
+                        if p.get("slug") == "budget-mensuel" and p.get("download_storage_path"):
+                            paths_to_check.append(p["download_storage_path"])
+        except Exception:
+            pass
+        for path in set(paths_to_check):
+            r = s.get(f"{API}/media/{path}")
+            assert r.status_code == 404, f"/api/media/{path} must return 404 but got {r.status_code}"
+
     def test_download_endpoint_on_latest_order(self, s, admin_headers):
         r = s.get(f"{API}/admin/orders", headers=admin_headers)
         orders = [o for o in r.json()

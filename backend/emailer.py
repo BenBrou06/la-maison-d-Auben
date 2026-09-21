@@ -132,3 +132,26 @@ def order_confirmation_html(*, product_name: str, amount: float, currency: str, 
         'Nous ne vous demanderons jamais votre mot de passe ou vos informations bancaires par e-mail.</p>'
         '</td></tr></table></td></tr></table>'
     )
+
+
+def owner_sale_notification_html(*, product_name: str, amount: float, currency: str, customer_email: str, order_id: str) -> str:
+    money = f"{amount:.2f} {currency.upper()}".replace(".", ",")
+    return (
+        '<table role="presentation" width="100%" style="background:#FAF8F5;padding:32px 0;font-family:Arial,Helvetica,sans-serif">'
+        '<tr><td align="center">'
+        '<table role="presentation" width="520" style="background:#FFFFFF;border:1px solid #E2DDD5;border-radius:16px;overflow:hidden">'
+        '<tr><td style="background:#1E3A2B;padding:24px 32px">'
+        '<span style="color:#FAF8F5;font-size:20px;font-weight:bold">La Maison d\'Auben</span><br>'
+        '<span style="color:#87A987;font-size:13px">Notification de vente</span>'
+        '</td></tr>'
+        '<tr><td style="padding:28px 32px">'
+        '<h1 style="color:#1E3A2B;font-size:20px;margin:0 0 12px">Nouvelle vente 🎉</h1>'
+        '<table role="presentation" width="100%" style="border-collapse:collapse;font-size:15px;color:#2C332E">'
+        f'<tr><td style="padding:8px 0;color:#626D66">Produit</td><td style="padding:8px 0;text-align:right"><strong>{escape(product_name)}</strong></td></tr>'
+        f'<tr><td style="padding:8px 0;color:#626D66">Montant</td><td style="padding:8px 0;text-align:right"><strong>{money}</strong></td></tr>'
+        f'<tr><td style="padding:8px 0;color:#626D66">Client</td><td style="padding:8px 0;text-align:right">{escape(customer_email)}</td></tr>'
+        f'<tr><td style="padding:8px 0;color:#626D66">Commande</td><td style="padding:8px 0;text-align:right">{escape(order_id)}</td></tr>'
+        '</table>'
+        '<p style="color:#626D66;font-size:13px;line-height:1.6;margin-top:20px">Retrouvez le détail dans votre tableau de bord administrateur.</p>'
+        '</td></tr></table></td></tr></table>'
+    )

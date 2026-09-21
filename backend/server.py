@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr, Field
 from database import db
 from auth import hash_password, verify_password, create_access_token, get_current_admin
 from storage import put_object, get_object, init_storage, APP_NAME, MIME_TYPES
-from emailer import send_email, order_confirmation_html
+from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -236,13 +236,15 @@ def ensure_stripe_catalog():
                 )
             amount = int(round(entry["price"] * 100))
             existing = stripe.Price.list(lookup_keys=[lookup], active=True, limit=1).data
-            if existing and (existing[0].unit_amount != amount or existing[0].currency != entry["currency"]):
-                stripe.Price.modify(existing[0].id, active=False)
-                existing = []
+            if existing:
+                e0 = existing[0]
+                if e0.unit_amount != amount or e0.currency != entry["currency"] or e0.tax_behavior != "inclusive":
+                    stripe.Price.modify(e0.id, active=False)
+                    existing = []
             if not existing:
                 stripe.Price.create(
                     product=product.id, unit_amount=amount, currency=entry["currency"],
-                    lookup_key=lookup, transfer_lookup_key=True,
+                    lookup_key=lookup, transfer_lookup_key=True, tax_behavior="inclusive",
                 )
         logger.info("Stripe catalog ensured")
     except Exception as e:
@@ -315,6 +317,7 @@ async def fulfill_order(session_id: str):
         "download_count": 0,
         "download_limit": DOWNLOAD_LIMIT,
         "email_sent": False,
+        "owner_notified": False,
         "created_at": now_iso(),
     }
     # idempotent insert guard
@@ -344,6 +347,21 @@ async def fulfill_order(session_id: str):
             await db.orders.update_one({"session_id": session_id}, {"$set": {"email_sent": bool(eid)}})
         except Exception as e:
             logger.error(f"Confirmation email failed: {e}")
+    # Notification vendeur (alerte de nouvelle vente)
+    owner_email = os.environ.get("OWNER_EMAIL")
+    if owner_email:
+        try:
+            oid = await send_email(
+                to=owner_email,
+                subject=f"Nouvelle vente : {order['product_name']} ({order['amount']:.2f} {order['currency'].upper()})",
+                html=owner_sale_notification_html(
+                    product_name=order["product_name"], amount=order["amount"],
+                    currency=order["currency"], customer_email=email or "non communiqué", order_id=order["id"],
+                ),
+            )
+            await db.orders.update_one({"session_id": session_id}, {"$set": {"owner_notified": bool(oid)}})
+        except Exception as e:
+            logger.error(f"Owner notification email failed: {e}")
     return await db.orders.find_one({"session_id": session_id}, {"_id": 0})
 
 

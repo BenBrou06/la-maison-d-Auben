@@ -205,6 +205,48 @@ class TestTaxInclusiveAndOwnerNotified:
         # Owner notification flag set true on fulfilled order
         assert latest.get("owner_notified") is True, "owner_notified must be true"
 
+    def test_idempotency_no_duplicate_orders_per_session(self, s, admin_headers):
+        """Repeated status/by-session calls must not create duplicate orders."""
+        r = s.get(f"{API}/admin/orders", headers=admin_headers)
+        assert r.status_code == 200
+        orders = r.json()
+        paid_bm = [o for o in orders if o.get("product_slug") == "budget-mensuel" and o.get("status") == "paid"]
+        if not paid_bm:
+            pytest.skip("No paid Budget mensuel order yet")
+        paid_bm.sort(key=lambda o: o.get("created_at", ""), reverse=True)
+        sid = paid_bm[0]["session_id"]
+        # Hammer both idempotent endpoints
+        for _ in range(4):
+            assert s.get(f"{API}/payments/status/{sid}").status_code == 200
+            assert s.get(f"{API}/orders/by-session/{sid}").status_code == 200
+        # Re-query admin, count orders for that sid
+        r2 = s.get(f"{API}/admin/orders", headers=admin_headers)
+        matching = [o for o in r2.json() if o.get("session_id") == sid]
+        assert len(matching) == 1, f"Expected exactly 1 order per session_id, got {len(matching)}"
+
+    def test_stripe_config_log_present(self):
+        """Verify the boot log line 'Stripe initialisé | mode=test | cle=test' is present."""
+        import glob
+        found = False
+        for path in glob.glob("/var/log/supervisor/backend.*.log"):
+            try:
+                with open(path, "r", errors="ignore") as f:
+                    if "Stripe initialisé | mode=test | cle=test" in f.read():
+                        found = True
+                        break
+            except Exception:
+                pass
+        assert found, "Missing 'Stripe initialisé | mode=test | cle=test' log line"
+
+    def test_checkout_session_id_is_test_mode(self, s):
+        r = s.post(f"{API}/payments/checkout", json={"lookup_key": "budget_mensuel", "origin_url": BASE_URL})
+        assert r.status_code == 200
+        sid = r.json()["session_id"]
+        assert sid.startswith("cs_test_"), f"Expected cs_test_ prefix, got {sid}"
+        # payment_transactions record must exist with origin_url stored -> verified via status endpoint (needs no auth)
+        r2 = s.get(f"{API}/payments/status/{sid}")
+        assert r2.status_code == 200
+
     def test_download_endpoint_on_latest_order(self, s, admin_headers):
         r = s.get(f"{API}/admin/orders", headers=admin_headers)
         orders = [o for o in r.json()

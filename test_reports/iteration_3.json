@@ -1,0 +1,38 @@
+{
+  "summary": "Verified hardened Stripe integration end-to-end in TEST mode. Backend boots cleanly with the new config block: 'Stripe initialisé | mode=test | cle=test' present in logs, no CONFIG ERROR at boot, GET /api/settings 200. Performed TWO live Stripe test-mode hosted-checkout purchases (card 4242 4242 4242 4242, France). Both success pages show 'Montant payé : 7,99 €' (tax inclusive — NOT 8,43 €). For each session: session_id starts with cs_test_, GET /api/payments/status => paid, GET /api/orders/by-session => order with amount=7.99, currency=eur, download_token set, owner_notified=true. Idempotency verified: after 4x GET /api/payments/status and 4x GET /api/orders/by-session for the same session_id, GET /api/admin/orders shows EXACTLY ONE order per session_id (no duplicates). Secure download endpoint streams the real Budget-mensuel.xlsx (~1.08 MB, content-type spreadsheetml.sheet, Content-Disposition attachment). Regression pass: 6 products (incl. 'Suivi sportif'), budget-mensuel price=7.99 with main_image, 8 categories (sport present, investissement absent), articles/faq/newsletter/contact all 200. Admin login + all admin endpoints (Bearer required) work; 401 without token. Pytest suite expanded to 29 tests, all passing.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "fulfill_order -> customer confirmation email (Emergent /email/send)", "issue": "Emergent email integration returns 422 unknown for gmail.com customer addresses used in test (both buyer.auben+testreal@gmail.com and aubenbuyer2026@gmail.com). Owner notification to OWNER_EMAIL benbrou06@gmail.com returned 202 accepted. Result: email_sent=false on synthetic test orders. Not a code bug — Emergent email service appears to only accept the pre-verified owner recipient in this preview. Real customer sends should be re-verified in production with a warmed-up domain or by whitelisting recipients."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_lamaisondauben.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Investigate why Emergent /email/send returns 422 'unknown' for arbitrary gmail.com customer recipients in the preview. If it's a preview-only allowlist, note in docs; if production Resend is used with a verified sending domain, real customers should receive the confirmation. Consider surfacing the Resend/HTTP response body in logs to distinguish invalid recipient vs. transport failure.",
+    "(Carried from iter 2) Confirm intended product count: spec said 5, seed produces 6 (Suivi sportif). Currently test asserts >=5.",
+    "(Nice-to-have) fulfill_order now correctly uses s.amount_total for the persisted order amount — good. But payment_transactions.amount is still set from price.unit_amount at checkout creation; consider syncing tx.amount post-payment for parity with orders.amount."
+  ],
+  "critical_code_review_comments": [
+    "STRIPE_SECRET_KEY hard-fails at import time (raises RuntimeError) — correct, but this makes the module non-importable in CI/test environments without a secret. Consider guarding under an env flag or moving the check to @app.on_event('startup').",
+    "STRIPE_MODE vs key-prefix consistency check only errors when mode=live with a non-live key; when mode=test but a LIVE key is set, only a warning is logged. In preview, one accidental sk_live_ would still process REAL money. Recommend hard-failing on that inversion too (or requiring explicit STRIPE_ALLOW_LIVE_FROM_TEST=1).",
+    "fulfill_order now uses upsert with $setOnInsert + res.upserted_id check + unique index on session_id => truly idempotent. Good. But the email/owner-email blocks run only when res.upserted_id is not None — correct — so no duplicate emails on retries. Verified live.",
+    "webhook (POST /api/stripe/webhook) rejects invalid signatures with 400 — good; log stream shows repeated 400s (looks like Stripe's own retries against a stale whsec_). Not a defect for TEST mode since fulfill_order fallback via polling handles it. For prod, ensure the correct whsec_ is bound.",
+    "ensure_stripe_catalog() still runs synchronously in @app.on_event('startup') doing several Stripe REST calls — slow cold starts if Stripe is degraded. Consider deferring to a background task or lazy-init.",
+    "server.py at ~711 lines — still worth splitting admin/payments/public modules.",
+    "seed() is idempotent via $setOnInsert (good — no more overwrite of admin edits)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_lamaisondauben.py"
+  ],
+  "success_rate": {"backend": "100% (29/29 pytest); tax-inclusive + idempotency + owner-notified verified live", "frontend": "n/a (backend-only run)"},
+  "test_credentials": "admin@lamaisondauben.fr / Auben2026! ; Stripe test card 4242 4242 4242 4242, 12/34, CVC 123, country France.",
+  "seed_data_creation": "Two real paid Stripe TEST orders for Budget mensuel created during this run: session_ids cs_test_a1nfwCdio9L3L6vxfidW49VtnZBvbGF3XYM9wOwoSSAlsso4nF8B6JFv1o (order 78b4e1a5-34d1-4836-a74d-a460a080e315, email buyer.auben+testreal@gmail.com) and cs_test_a1zOFPkGEhQxwPQIOMqalxub94UpZPTCCfBxwsTn21vj48eaFj5TfqBl7X (order 929382dd-89f9-4315-9407-37efaf0e20a6, email aubenbuyer2026@gmail.com). Both amount=7.99 EUR, status=paid, owner_notified=true, email_sent=false (Emergent 422). Plus TEST_ prefixed newsletter/contact rows from pytest.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stripe hardening iteration verified: TEST mode key, cs_test_ session ids, tax_behavior=inclusive => customer pays exactly 7,99 €, idempotent fulfillment via unique index on orders.session_id and upsert. New pytest tests: test_idempotency_no_duplicate_orders_per_session, test_stripe_config_log_present, test_checkout_session_id_is_test_mode. Only unresolved observation is Emergent /email/send returning 422 for gmail.com customer recipients (owner-email works, so it's a recipient allowlist, not a transport bug). To replay full purchase, use the Playwright snippet: POST /api/payments/checkout, then goto checkout_url, fill email/name/card 4242/exp 12/34/CVC 123/country FR, click button[data-testid='hosted-payment-submit-button'], wait for **/paiement/succes**.",
+  "rca of the issue": "N/A — no regressions after Stripe refactor. Customer email_sent=false is external (Emergent email service 422 on arbitrary gmail addresses in preview); owner_notified=true confirms the code path is wired. All payment-critical guarantees (test-mode enforcement, tax-inclusive 7,99 €, idempotent fulfilment, secure signed download) hold."
+}

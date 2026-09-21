@@ -41,8 +41,13 @@ if STRIPE_MODE == "live" and not _is_live_key:
         "CONFIG ERROR: STRIPE_MODE=live mais STRIPE_SECRET_KEY n'est pas une clé live "
         "(attendu sk_live_... ou rk_live_...). Refus de démarrer pour éviter un paiement en Test en production."
     )
-if STRIPE_MODE != "live" and _is_live_key:
-    logger.warning("STRIPE_MODE=%s alors qu'une clé LIVE est configurée : de vrais paiements seront traités.", STRIPE_MODE)
+if STRIPE_MODE != "live" and _is_live_key and os.environ.get("STRIPE_ALLOW_LIVE", "").strip() != "1":
+    raise RuntimeError(
+        "CONFIG ERROR: une clé Stripe LIVE est configurée alors que STRIPE_MODE != 'live'. "
+        "Refus de démarrer pour éviter de vrais débits en environnement de test/preview. "
+        "Passez STRIPE_MODE=live en production, ou utilisez une clé de test en preview "
+        "(override volontaire : STRIPE_ALLOW_LIVE=1)."
+    )
 if STRIPE_MODE == "live" and not STRIPE_WEBHOOK_SECRET:
     logger.warning("STRIPE_MODE=live sans STRIPE_WEBHOOK_SECRET : le webhook rejettera les événements (le fallback polling prendra le relais). Configurez le whsec_ de production.")
 

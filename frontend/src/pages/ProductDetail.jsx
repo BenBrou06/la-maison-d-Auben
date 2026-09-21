@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Check, Download, Lock, ShieldCheck, X, ChevronLe
 import { Seo } from "@/components/Seo";
 import { Reveal } from "@/components/Reveal";
 import { Icon } from "@/components/Icon";
-import { Screenshot, LaptopMockup } from "@/components/Screenshot";
+import { Screenshot, LaptopMockup, HeroVisual } from "@/components/Screenshot";
 import { getProduct, getCategories, createCheckout, mediaUrl } from "@/lib/api";
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
@@ -55,7 +55,7 @@ export default function ProductDetail() {
         <Reveal>
           <div className="relative p-2">
             <div className="absolute -inset-4 -z-10 rounded-[2rem] bg-gradient-to-br from-[#EAF0EC] to-[#F2EDE4]" />
-            <LaptopMockup url={product.main_image ? mediaUrl(product.main_image) : ""} caption={product.name} />
+            <HeroVisual url={product.main_image ? mediaUrl(product.main_image) : ""} caption={product.name} />
           </div>
         </Reveal>
         <Reveal delay={0.1}>

@@ -5,7 +5,7 @@ import { ArrowRight, Check, Sparkles, Star, Wand2, HeartHandshake } from "lucide
 import { Seo } from "@/components/Seo";
 import { Reveal } from "@/components/Reveal";
 import { Icon } from "@/components/Icon";
-import { LaptopMockup } from "@/components/Screenshot";
+import { LaptopMockup, HeroVisual } from "@/components/Screenshot";
 import { ProductCard } from "@/components/ProductCard";
 import { Newsletter } from "@/components/Newsletter";
 import { getSettings, getProducts, getCategories, getArticles, mediaUrl } from "@/lib/api";
@@ -71,7 +71,7 @@ export default function Home() {
           <Reveal delay={0.15}>
             <div className="relative">
               <div className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-[#EAF0EC] to-[#F2EDE4]" />
-              <LaptopMockup url={featured?.main_image ? mediaUrl(featured.main_image) : ""} caption="Budget mensuel" />
+              <HeroVisual url={featured?.main_image ? mediaUrl(featured.main_image) : ""} caption="Budget mensuel" />
             </div>
           </Reveal>
         </div>
@@ -83,7 +83,7 @@ export default function Home() {
           <div className="card-soft grid gap-8 overflow-hidden p-6 sm:p-10 lg:grid-cols-2 lg:items-center">
             <Reveal>
               <div className="p-2">
-                <LaptopMockup url={featured.main_image ? mediaUrl(featured.main_image) : ""} caption="Aperçu du produit" />
+                <HeroVisual url={featured.main_image ? mediaUrl(featured.main_image) : ""} caption="Aperçu du produit" />
               </div>
             </Reveal>
             <Reveal delay={0.1}>

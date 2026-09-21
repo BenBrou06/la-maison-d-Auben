@@ -9,6 +9,7 @@ import stripe
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Response
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
+from pymongo.errors import DuplicateKeyError
 
 from database import db
 from auth import hash_password, verify_password, create_access_token, get_current_admin
@@ -19,8 +20,35 @@ import seed_data
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
+# --- Configuration Stripe (secrets uniquement via variables d'environnement) ---
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_MODE = (os.environ.get("STRIPE_MODE") or "test").strip().lower()
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+# Aucun fallback test : si la clé est absente, échec explicite (pas de mode Test silencieux).
+if not STRIPE_SECRET_KEY:
+    raise RuntimeError(
+        "CONFIG ERROR: STRIPE_SECRET_KEY est absente. Configurez le secret Stripe côté serveur "
+        "(variables d'environnement / Secrets). Aucun fallback vers une clé de test n'est autorisé."
+    )
+
+_is_live_key = STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_"))
+_is_test_key = STRIPE_SECRET_KEY.startswith(("sk_test_", "rk_test_"))
+
+# Cohérence mode <-> type de clé : empêche un déploiement "prod" de tourner en Test par erreur.
+if STRIPE_MODE == "live" and not _is_live_key:
+    raise RuntimeError(
+        "CONFIG ERROR: STRIPE_MODE=live mais STRIPE_SECRET_KEY n'est pas une clé live "
+        "(attendu sk_live_... ou rk_live_...). Refus de démarrer pour éviter un paiement en Test en production."
+    )
+if STRIPE_MODE != "live" and _is_live_key:
+    logger.warning("STRIPE_MODE=%s alors qu'une clé LIVE est configurée : de vrais paiements seront traités.", STRIPE_MODE)
+if STRIPE_MODE == "live" and not STRIPE_WEBHOOK_SECRET:
+    logger.warning("STRIPE_MODE=live sans STRIPE_WEBHOOK_SECRET : le webhook rejettera les événements (le fallback polling prendra le relais). Configurez le whsec_ de production.")
+
+stripe.api_key = STRIPE_SECRET_KEY
+logger.info("Stripe initialisé | mode=%s | cle=%s", STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
+
 DOWNLOAD_TTL_DAYS = 30
 DOWNLOAD_LIMIT = 25
 
@@ -258,12 +286,13 @@ async def create_checkout(req: CheckoutInput):
         raise HTTPException(500, f"Prix introuvable : {req.lookup_key}")
     price = prices[0]
     product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
+    origin = (req.origin_url or "").rstrip("/")
     kwargs = dict(
         line_items=[{"price": price.id, "quantity": 1}],
         mode="payment",
-        success_url=f"{req.origin_url}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{req.origin_url}/paiement/annule",
-        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else ""},
+        success_url=f"{origin}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{origin}/paiement/annule",
+        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else "", "origin_url": origin},
     )
     try:
         session = stripe.checkout.Session.create(**kwargs, managed_payments={"enabled": True})
@@ -279,6 +308,7 @@ async def create_checkout(req: CheckoutInput):
         "session_id": session.id, "lookup_key": req.lookup_key,
         "product_slug": product["slug"] if product else "",
         "amount": (price.unit_amount or 0) / 100.0, "currency": price.currency,
+        "origin_url": origin,
         "status": "initiated", "payment_status": "pending",
         "created_at": now_iso(), "updated_at": now_iso(),
     })
@@ -308,8 +338,8 @@ async def fulfill_order(session_id: str):
         "session_id": session_id,
         "product_slug": slug,
         "product_name": product.get("name", "Produit"),
-        "amount": (tx or {}).get("amount", (s.amount_total or 0) / 100.0),
-        "currency": (tx or {}).get("currency", s.currency or "eur"),
+        "amount": (s.amount_total or 0) / 100.0 if s.amount_total is not None else (tx or {}).get("amount", 0),
+        "currency": s.currency or (tx or {}).get("currency", "eur"),
         "customer_email": email,
         "status": "paid",
         "download_token": token,
@@ -320,10 +350,13 @@ async def fulfill_order(session_id: str):
         "owner_notified": False,
         "created_at": now_iso(),
     }
-    # idempotent insert guard
-    res = await db.orders.update_one(
-        {"session_id": session_id}, {"$setOnInsert": order}, upsert=True
-    )
+    # Idempotence : insertion atomique gardée par l'index unique session_id.
+    try:
+        res = await db.orders.update_one(
+            {"session_id": session_id}, {"$setOnInsert": order}, upsert=True
+        )
+    except DuplicateKeyError:
+        return await db.orders.find_one({"session_id": session_id}, {"_id": 0})
     if res.upserted_id is None:
         return await db.orders.find_one({"session_id": session_id}, {"_id": 0})
     await db.payment_transactions.update_one(
@@ -332,8 +365,9 @@ async def fulfill_order(session_id: str):
     )
     # Email de confirmation avec lien de téléchargement sécurisé
     if email:
-        origin = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-        base = origin or "https://auben-preview-shop.preview.emergentagent.com"
+        base = ((tx or {}).get("origin_url")
+                or os.environ.get("PUBLIC_BASE_URL")
+                or os.environ.get("REACT_APP_BACKEND_URL", "")).rstrip("/")
         download_url = f"{base}/telechargement/{token}"
         try:
             eid = await send_email(

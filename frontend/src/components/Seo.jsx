@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 // SEO léger sans dépendance : titre, meta description, canonical, OG.
-export const Seo = ({ title, description, image, path }) => {
+export const Seo = ({ title, description, image, path, noindex = false }) => {
   useEffect(() => {
     if (title) document.title = title;
     const set = (selector, attr, value) => {
@@ -20,6 +20,19 @@ export const Seo = ({ title, description, image, path }) => {
     set('meta[property="og:description"]', "content", description);
     if (image) set('meta[property="og:image"]', "content", image);
 
+    // Pages sensibles (téléchargement/confirmation) : ne pas indexer.
+    let robots = document.head.querySelector('meta[name="robots"]');
+    if (noindex) {
+      if (!robots) {
+        robots = document.createElement("meta");
+        robots.setAttribute("name", "robots");
+        document.head.appendChild(robots);
+      }
+      robots.setAttribute("content", "noindex, nofollow");
+    } else if (robots) {
+      robots.setAttribute("content", "index, follow");
+    }
+
     let canonical = document.head.querySelector('link[rel="canonical"]');
     if (!canonical) {
       canonical = document.createElement("link");
@@ -27,7 +40,7 @@ export const Seo = ({ title, description, image, path }) => {
       document.head.appendChild(canonical);
     }
     canonical.setAttribute("href", window.location.origin + (path || window.location.pathname));
-  }, [title, description, image, path]);
+  }, [title, description, image, path, noindex]);
   return null;
 };
 

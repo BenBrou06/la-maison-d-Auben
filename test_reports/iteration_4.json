@@ -1,0 +1,36 @@
+{
+  "summary": "Final pre-production regression + security sign-off for La Maison d'Auben Stripe purchase chain in TEST mode. No code changes since iter_3. Backend boots healthy: GET /api/settings 200, log confirms 'Stripe initialisé | mode=test | cle=test', no CONFIG ERROR. Full chain verified against live TEST-mode data seeded in iter_3 (checkout returns cs_test_ session_id, /api/payments/status => paid, /api/orders/by-session => amount 7.99 EUR from Stripe session.amount_total, download_token present, owner_notified=true). Idempotency confirmed: 5 paid Budget mensuel orders, all with UNIQUE session_ids after repeated status/by-session calls; admin listing shows exactly 1 order per session_id. Secure download streams real Budget-mensuel.xlsx (~1MB, spreadsheetml.sheet, Content-Disposition attachment). Two new download-security tests added and PASS: (a) GET /api/download/<bogus-token> => 404, (b) GET /api/media/maison-auben/files/budget-mensuel/3dca6781-e5c9-4e5b-b153-b099efdd264c.xlsx (paid file path, also probed dynamically from admin/products.download_storage_path) => 404 — the /api/media endpoint queries db.media which only contains images, so the paid xlsx is NOT bypassable via the public media route; only /api/download/{token} serves it. Regression pass: 6 products (incl. 'Suivi sportif'), budget-mensuel price=7.99 with main_image, 8 categories (sport present, investissement absent), articles/faq/newsletter/contact all 200, admin login works, admin endpoints 401 without Bearer. Pytest expanded from 29 to 31 tests — all 31 pass in 5.32s.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "historical order data", "issue": "One legacy paid Budget mensuel order (cs_test_a1z9yangc4AM...) still has amount=8.43 EUR — created BEFORE the tax-inclusive fix landed. Not a regression; all post-fix orders correctly persist 7.99 EUR from session.amount_total. Optional cleanup: purge or reprice legacy TEST orders in preview."},
+      {"endpoint": "fulfill_order -> customer email (Emergent /email/send)", "issue": "(Carried from iter_3) Emergent /email/send returns 422 for arbitrary gmail.com customer recipients in preview; owner notification to OWNER_EMAIL works (202). Recipient-allowlist behaviour of preview email service, not a code bug. Re-verify with the production Resend domain."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_lamaisondauben.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Purge or reprice the single legacy 8.43 EUR paid TEST order (cs_test_a1z9yangc4AM...) in preview so the admin dashboard shows consistent 7.99 EUR amounts across all TEST orders before going live.",
+    "(Pre-live) When switching STRIPE_MODE=live in production Secrets, re-run this suite (all 31 tests) after seeding a single live-mode 1 EUR test purchase or against a fresh live cs_live_ session_id — the log assertion will need 'Stripe initialisé | mode=live | cle=live' variant.",
+    "(Carried from iter_3) Consider hard-failing when STRIPE_MODE=test but STRIPE_SECRET_KEY starts with sk_live_ (currently only warns) unless STRIPE_ALLOW_LIVE_FROM_TEST=1."
+  ],
+  "critical_code_review_comments": [
+    "/api/media/{path} only serves db.media documents (images) — the paid xlsx is stored via object storage under products.download_storage_path and is NEVER inserted into db.media, so it cannot leak through the public media endpoint. Verified with two independent path probes.",
+    "/api/download/{token} correctly returns 404 for unknown tokens (Mongo find_one miss). TTL + download_limit + $inc counter present.",
+    "fulfill_order idempotency (unique index on orders.session_id + upsert with $setOnInsert + res.upserted_id gate for email side-effects) verified across 5 real paid TEST orders — 0 duplicates, owner_notified true exactly once per session.",
+    "Order.amount is now sourced from Stripe session.amount_total => tax-inclusive 7,99 € persisted correctly on all post-fix orders."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_lamaisondauben.py"
+  ],
+  "success_rate": {"backend": "100% (31/31 pytest); full chain + idempotency + both download-security guards verified", "frontend": "n/a (backend-only run)"},
+  "test_credentials": "admin@lamaisondauben.fr / Auben2026! ; Stripe TEST card 4242 4242 4242 4242, future expiry, CVC 123, country France.",
+  "seed_data_creation": "No new Stripe purchases performed this iteration; reused iter_3 seeded paid orders (5 total, session_ids include cs_test_a1zOFPkGEhQx... and cs_test_a1nfwCdio9L3...). TEST_ prefixed newsletter/contact rows created by pytest.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Two new pytest cases were added under TestTaxInclusiveAndOwnerNotified: test_download_bogus_token_returns_404 and test_paid_xlsx_not_served_via_media_endpoint. The latter dynamically pulls download_storage_path from GET /api/admin/products and additionally probes the hard-coded path from the review request. Both PASS in TEST mode. To fully replay a purchase: POST /api/payments/checkout {lookup_key:'budget_mensuel', origin_url: PUBLIC_BASE_URL}, then Playwright hosted-checkout with card 4242, wait for **/paiement/succes**, then poll /api/payments/status/{sid}.",
+  "rca of the issue": "N/A — final pre-production sign-off passed. All Stripe security guardrails hold: TEST-mode enforcement, cs_test_ session id, tax-inclusive 7,99 € persisted from session.amount_total, idempotent fulfillment (unique session_id index), signed one-shot download, and — newly verified — paid xlsx is NOT downloadable via /api/media (only images are in db.media) and unknown download tokens return 404."
+}

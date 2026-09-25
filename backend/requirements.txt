@@ -30,3 +30,4 @@ emergentintegrations==0.2.0
 stripe==14.4.1
 httpx==0.28.1
 openpyxl==3.1.5
+slowapi==0.1.9

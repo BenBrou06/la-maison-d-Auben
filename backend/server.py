@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import logging
 import secrets
@@ -9,6 +10,8 @@ import stripe
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Response
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
+from pymongo.errors import DuplicateKeyError
+from starlette.responses import JSONResponse
 
 from database import db
 from auth import hash_password, verify_password, create_access_token, get_current_admin
@@ -19,10 +22,89 @@ import seed_data
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
+# --- Configuration Stripe (secrets uniquement via variables d'environnement) ---
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_MODE = (os.environ.get("STRIPE_MODE") or "test").strip().lower()
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+# Aucun fallback test : si la clé est absente, échec explicite (pas de mode Test silencieux).
+if not STRIPE_SECRET_KEY:
+    raise RuntimeError(
+        "CONFIG ERROR: STRIPE_SECRET_KEY est absente. Configurez le secret Stripe côté serveur "
+        "(variables d'environnement / Secrets). Aucun fallback vers une clé de test n'est autorisé."
+    )
+
+_is_live_key = STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_"))
+_is_test_key = STRIPE_SECRET_KEY.startswith(("sk_test_", "rk_test_"))
+
+# Cohérence mode <-> type de clé : empêche un déploiement "prod" de tourner en Test par erreur.
+if STRIPE_MODE == "live" and not _is_live_key:
+    raise RuntimeError(
+        "CONFIG ERROR: STRIPE_MODE=live mais STRIPE_SECRET_KEY n'est pas une clé live "
+        "(attendu sk_live_... ou rk_live_...). Refus de démarrer pour éviter un paiement en Test en production."
+    )
+if STRIPE_MODE != "live" and _is_live_key and os.environ.get("STRIPE_ALLOW_LIVE", "").strip() != "1":
+    raise RuntimeError(
+        "CONFIG ERROR: une clé Stripe LIVE est configurée alors que STRIPE_MODE != 'live'. "
+        "Refus de démarrer pour éviter de vrais débits en environnement de test/preview. "
+        "Passez STRIPE_MODE=live en production, ou utilisez une clé de test en preview "
+        "(override volontaire : STRIPE_ALLOW_LIVE=1)."
+    )
+if STRIPE_MODE == "live" and not STRIPE_WEBHOOK_SECRET:
+    logger.warning("STRIPE_MODE=live sans STRIPE_WEBHOOK_SECRET : le webhook rejettera les événements (le fallback polling prendra le relais). Configurez le whsec_ de production.")
+
+stripe.api_key = STRIPE_SECRET_KEY
+logger.info("Stripe initialisé | mode=%s | cle=%s", STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
+
 DOWNLOAD_TTL_DAYS = 30
 DOWNLOAD_LIMIT = 25
+
+# Uploads admin : garde-fous (taille, extensions, MIME)
+MAX_IMAGE_BYTES = 8 * 1024 * 1024      # 8 Mo
+MAX_FILE_BYTES = 50 * 1024 * 1024      # 50 Mo
+ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
+ALLOWED_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+ALLOWED_FILE_EXT = {"xlsx", "xls", "csv", "pdf", "zip"}
+ALLOWED_FILE_MIME = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel", "text/csv", "application/pdf", "application/zip",
+    "application/octet-stream",
+}
+
+
+def safe_ext(filename: str) -> str:
+    name = os.path.basename(filename or "")
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+
+def sanitize_filename(filename: str, fallback: str) -> str:
+    name = os.path.basename(filename or "").replace("\\", "").strip()
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+    return name or fallback
+
+
+# Rate limiting in-memory (fenêtre glissante), sans dépendance externe.
+from collections import defaultdict, deque
+import time as _time
+_rl_store = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def check_rate(request: Request, bucket: str, limit: int, window: int = 60):
+    key = f"{bucket}:{_client_ip(request)}"
+    now = _time.time()
+    dq = _rl_store[key]
+    while dq and dq[0] <= now - window:
+        dq.popleft()
+    if len(dq) >= limit:
+        raise HTTPException(429, "Trop de requêtes. Merci de réessayer dans une minute.")
+    dq.append(now)
 
 app = FastAPI(title="La Maison d'Auben API")
 api = APIRouter(prefix="/api")
@@ -180,7 +262,8 @@ async def get_faq():
 
 
 @api.post("/newsletter")
-async def subscribe_newsletter(inp: NewsletterInput):
+async def subscribe_newsletter(request: Request, inp: NewsletterInput):
+    check_rate(request, "newsletter", 10)
     if not inp.consent:
         raise HTTPException(400, "Le consentement est requis.")
     email = inp.email.lower()
@@ -195,7 +278,8 @@ async def subscribe_newsletter(inp: NewsletterInput):
 
 
 @api.post("/contact")
-async def contact(inp: ContactInput):
+async def contact(request: Request, inp: ContactInput):
+    check_rate(request, "contact", 5)
     await db.contact_messages.insert_one({
         "id": str(uuid.uuid4()), "name": inp.name, "email": inp.email.lower(),
         "subject": inp.subject, "message": inp.message, "created_at": now_iso(),
@@ -252,18 +336,20 @@ def ensure_stripe_catalog():
 
 
 @api.post("/payments/checkout")
-async def create_checkout(req: CheckoutInput):
+async def create_checkout(request: Request, req: CheckoutInput):
+    check_rate(request, "checkout", 20)
     prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
     if not prices:
         raise HTTPException(500, f"Prix introuvable : {req.lookup_key}")
     price = prices[0]
     product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
+    origin = (req.origin_url or "").rstrip("/")
     kwargs = dict(
         line_items=[{"price": price.id, "quantity": 1}],
         mode="payment",
-        success_url=f"{req.origin_url}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{req.origin_url}/paiement/annule",
-        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else ""},
+        success_url=f"{origin}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{origin}/paiement/annule",
+        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else "", "origin_url": origin},
     )
     try:
         session = stripe.checkout.Session.create(**kwargs, managed_payments={"enabled": True})
@@ -279,22 +365,92 @@ async def create_checkout(req: CheckoutInput):
         "session_id": session.id, "lookup_key": req.lookup_key,
         "product_slug": product["slug"] if product else "",
         "amount": (price.unit_amount or 0) / 100.0, "currency": price.currency,
+        "origin_url": origin,
         "status": "initiated", "payment_status": "pending",
         "created_at": now_iso(), "updated_at": now_iso(),
     })
     return {"checkout_url": session.url, "session_id": session.id}
 
 
+async def _send_customer_email(order: dict):
+    """Envoi idempotent + rejouable de l'e-mail client (état email_status propre)."""
+    sid = order["session_id"]
+    claim = await db.orders.update_one(
+        {"session_id": sid, "email_status": {"$in": ["pending", "failed"]}},
+        {"$set": {"email_status": "sending"}},
+    )
+    if claim.modified_count == 0:
+        return  # déjà envoyé ou en cours (pas de double envoi)
+    email = order.get("customer_email")
+    if not email:
+        await db.orders.update_one({"session_id": sid}, {"$set": {"email_status": "skipped"}})
+        return
+    tx = await db.payment_transactions.find_one({"session_id": sid}, {"_id": 0})
+    base = ((tx or {}).get("origin_url")
+            or os.environ.get("PUBLIC_BASE_URL")
+            or os.environ.get("REACT_APP_BACKEND_URL", "")).rstrip("/")
+    download_url = f"{base}/telechargement/{order['download_token']}"
+    try:
+        eid = await send_email(
+            to=email,
+            subject=f"Votre commande {order['product_name']} est confirmée",
+            html=order_confirmation_html(
+                product_name=order["product_name"], amount=order["amount"],
+                currency=order["currency"], download_url=download_url, order_id=order["id"],
+            ),
+        )
+        await db.orders.update_one({"session_id": sid}, {"$set": {
+            "email_status": "sent" if eid else "failed", "email_sent": bool(eid)}})
+    except Exception as e:
+        logger.error("Confirmation email error (order %s): %s", order["id"], e)
+        await db.orders.update_one({"session_id": sid}, {"$set": {"email_status": "failed"}})
+
+
+async def _send_owner_email(order: dict):
+    """Notification vendeur, idempotente + rejouable (état owner_email_status propre)."""
+    owner_email = os.environ.get("OWNER_EMAIL")
+    if not owner_email:
+        return
+    sid = order["session_id"]
+    claim = await db.orders.update_one(
+        {"session_id": sid, "owner_email_status": {"$in": ["pending", "failed"]}},
+        {"$set": {"owner_email_status": "sending"}},
+    )
+    if claim.modified_count == 0:
+        return
+    try:
+        oid = await send_email(
+            to=owner_email,
+            subject=f"Nouvelle vente : {order['product_name']} ({order['amount']:.2f} {order['currency'].upper()})",
+            html=owner_sale_notification_html(
+                product_name=order["product_name"], amount=order["amount"],
+                currency=order["currency"], customer_email=order.get("customer_email") or "non communiqué",
+                order_id=order["id"],
+            ),
+        )
+        await db.orders.update_one({"session_id": sid}, {"$set": {
+            "owner_email_status": "sent" if oid else "failed", "owner_notified": bool(oid)}})
+    except Exception as e:
+        logger.error("Owner email error (order %s): %s", order["id"], e)
+        await db.orders.update_one({"session_id": sid}, {"$set": {"owner_email_status": "failed"}})
+
+
 async def fulfill_order(session_id: str):
-    """Idempotent : crée la commande, le lien de téléchargement et envoie l'e-mail."""
+    """Crée la commande (idempotent) UNIQUEMENT si le paiement est réellement confirmé,
+    puis déclenche les e-mails (envoi rejouable). Ne livre jamais sur un simple status=complete."""
     existing = await db.orders.find_one({"session_id": session_id}, {"_id": 0})
     if existing:
-        return existing
+        # commande déjà créée : relancer uniquement les e-mails non aboutis (pas de doublon)
+        await _send_customer_email(existing)
+        await _send_owner_email(existing)
+        return await db.orders.find_one({"session_id": session_id}, {"_id": 0})
     try:
         s = stripe.checkout.Session.retrieve(session_id)
     except stripe.error.StripeError:
         return None
-    if not (s.payment_status == "paid" or s.status == "complete"):
+    # SOURCE DE VÉRITÉ SERVEUR : livraison conditionnée au paiement RÉELLEMENT encaissé.
+    # Un simple s.status == "complete" ne suffit PAS (paiements asynchrones, etc.).
+    if s.payment_status != "paid":
         return None
     tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
     slug = (tx or {}).get("product_slug") or (s.metadata or {}).get("product_slug", "")
@@ -308,60 +464,38 @@ async def fulfill_order(session_id: str):
         "session_id": session_id,
         "product_slug": slug,
         "product_name": product.get("name", "Produit"),
-        "amount": (tx or {}).get("amount", (s.amount_total or 0) / 100.0),
-        "currency": (tx or {}).get("currency", s.currency or "eur"),
+        "amount": (s.amount_total or 0) / 100.0 if s.amount_total is not None else (tx or {}).get("amount", 0),
+        "currency": s.currency or (tx or {}).get("currency", "eur"),
         "customer_email": email,
         "status": "paid",
+        "fulfillment_status": "paid",
         "download_token": token,
         "download_expires_at": (datetime.now(timezone.utc) + timedelta(days=DOWNLOAD_TTL_DAYS)).isoformat(),
         "download_count": 0,
         "download_limit": DOWNLOAD_LIMIT,
         "email_sent": False,
+        "email_status": "pending",
         "owner_notified": False,
+        "owner_email_status": "pending",
         "created_at": now_iso(),
     }
-    # idempotent insert guard
-    res = await db.orders.update_one(
-        {"session_id": session_id}, {"$setOnInsert": order}, upsert=True
-    )
-    if res.upserted_id is None:
-        return await db.orders.find_one({"session_id": session_id}, {"_id": 0})
-    await db.payment_transactions.update_one(
-        {"session_id": session_id},
-        {"$set": {"status": "completed", "payment_status": "paid", "updated_at": now_iso()}},
-    )
-    # Email de confirmation avec lien de téléchargement sécurisé
-    if email:
-        origin = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-        base = origin or "https://auben-preview-shop.preview.emergentagent.com"
-        download_url = f"{base}/telechargement/{token}"
-        try:
-            eid = await send_email(
-                to=email,
-                subject=f"Votre commande {order['product_name']} est confirmée",
-                html=order_confirmation_html(
-                    product_name=order["product_name"], amount=order["amount"],
-                    currency=order["currency"], download_url=download_url, order_id=order["id"],
-                ),
-            )
-            await db.orders.update_one({"session_id": session_id}, {"$set": {"email_sent": bool(eid)}})
-        except Exception as e:
-            logger.error(f"Confirmation email failed: {e}")
-    # Notification vendeur (alerte de nouvelle vente)
-    owner_email = os.environ.get("OWNER_EMAIL")
-    if owner_email:
-        try:
-            oid = await send_email(
-                to=owner_email,
-                subject=f"Nouvelle vente : {order['product_name']} ({order['amount']:.2f} {order['currency'].upper()})",
-                html=owner_sale_notification_html(
-                    product_name=order["product_name"], amount=order["amount"],
-                    currency=order["currency"], customer_email=email or "non communiqué", order_id=order["id"],
-                ),
-            )
-            await db.orders.update_one({"session_id": session_id}, {"$set": {"owner_notified": bool(oid)}})
-        except Exception as e:
-            logger.error(f"Owner notification email failed: {e}")
+    # Idempotence : insertion atomique gardée par l'index unique session_id.
+    try:
+        res = await db.orders.update_one(
+            {"session_id": session_id}, {"$setOnInsert": order}, upsert=True
+        )
+    except DuplicateKeyError:
+        res = None
+    if res is not None and res.upserted_id is not None:
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {"status": "completed", "payment_status": "paid", "updated_at": now_iso()}},
+        )
+    # Emails (état propre, rejouable) — pas de doublon de commande, retry possible sur échec.
+    current = await db.orders.find_one({"session_id": session_id}, {"_id": 0})
+    if current:
+        await _send_customer_email(current)
+        await _send_owner_email(current)
     return await db.orders.find_one({"session_id": session_id}, {"_id": 0})
 
 
@@ -373,7 +507,7 @@ async def payment_status(session_id: str):
     if record.get("payment_status") != "paid":
         try:
             s = stripe.checkout.Session.retrieve(session_id)
-            if s.payment_status == "paid" or s.status == "complete":
+            if s.payment_status == "paid":
                 await fulfill_order(session_id)
                 record = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
         except stripe.error.StripeError:
@@ -405,12 +539,13 @@ async def stripe_webhook(request: Request):
         raise HTTPException(400, "Signature invalide")
     obj, t = event["data"]["object"], event["type"]
     if t == "checkout.session.completed":
+        # payment_status peut être unpaid (paiement asynchrone) : ne pas forcer "paid".
         await db.payment_transactions.update_one(
             {"session_id": obj["id"], "payment_status": {"$ne": "paid"}},
-            {"$set": {"status": "completed", "payment_status": obj.get("payment_status", "paid"),
+            {"$set": {"status": "completed", "payment_status": obj.get("payment_status", "unpaid"),
                       "updated_at": now_iso()}},
         )
-        await fulfill_order(obj["id"])
+        await fulfill_order(obj["id"])  # ne livrera que si payment_status == paid
     elif t == "checkout.session.async_payment_succeeded":
         await fulfill_order(obj["id"])
     elif t in ("checkout.session.async_payment_failed", "checkout.session.expired"):
@@ -464,7 +599,8 @@ async def download_info(token: str):
 # Admin
 # --------------------------------------------------------------------------- #
 @api.post("/admin/login")
-async def admin_login(inp: LoginInput):
+async def admin_login(request: Request, inp: LoginInput):
+    check_rate(request, "admin_login", 5)
     user = await db.users.find_one({"email": inp.email.lower()})
     if not user or not verify_password(inp.password, user.get("password_hash", "")):
         raise HTTPException(401, "Identifiants incorrects")
@@ -492,6 +628,19 @@ async def admin_newsletter(admin=Depends(get_current_admin)):
 @api.get("/admin/messages")
 async def admin_messages(admin=Depends(get_current_admin)):
     return await db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+
+
+@api.post("/admin/orders/{order_id}/resend-email")
+async def admin_resend_email(order_id: str, admin=Depends(get_current_admin)):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Commande introuvable")
+    # réinitialise l'état pour permettre un nouvel essai (sans recréer la commande)
+    await db.orders.update_one({"id": order_id}, {"$set": {"email_status": "pending"}})
+    order["email_status"] = "pending"
+    await _send_customer_email(order)
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return {"status": "ok", "email_status": updated.get("email_status"), "email_sent": updated.get("email_sent", False)}
 
 
 @api.post("/admin/products")
@@ -528,26 +677,42 @@ async def upload_product_file(slug: str, file: UploadFile = File(...), admin=Dep
     product = await db.products.find_one({"slug": slug})
     if not product:
         raise HTTPException(404, "Produit introuvable")
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
-    path = f"{APP_NAME}/files/{slug}/{uuid.uuid4()}.{ext}"
+    ext = safe_ext(file.filename)
+    if ext not in ALLOWED_FILE_EXT:
+        raise HTTPException(400, f"Extension non autorisée. Autorisées : {', '.join(sorted(ALLOWED_FILE_EXT))}")
     data = await file.read()
+    if len(data) == 0:
+        raise HTTPException(400, "Fichier vide.")
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(400, "Fichier trop volumineux (max 50 Mo).")
     ct = file.content_type or MIME_TYPES.get(ext, "application/octet-stream")
+    if ct not in ALLOWED_FILE_MIME:
+        ct = MIME_TYPES.get(ext, "application/octet-stream")
+    filename = sanitize_filename(file.filename, f"{slug}.{ext}")
+    path = f"{APP_NAME}/files/{slug}/{uuid.uuid4()}.{ext}"
     put_object(path, data, ct)
     await db.products.update_one({"slug": slug}, {"$set": {
-        "download_storage_path": path, "download_filename": file.filename,
+        "download_storage_path": path, "download_filename": filename, "download_is_placeholder": False,
     }})
-    return {"status": "ok", "filename": file.filename}
+    return {"status": "ok", "filename": filename}
 
 
 @api.post("/admin/upload/image")
 async def upload_image(file: UploadFile = File(...), admin=Depends(get_current_admin)):
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "png"
-    path = f"{APP_NAME}/images/{uuid.uuid4()}.{ext}"
+    ext = safe_ext(file.filename)
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise HTTPException(400, f"Image non autorisée. Autorisées : {', '.join(sorted(ALLOWED_IMAGE_EXT))}")
     data = await file.read()
-    ct = file.content_type or MIME_TYPES.get(ext, "image/png")
+    if len(data) == 0:
+        raise HTTPException(400, "Fichier vide.")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(400, "Image trop volumineuse (max 8 Mo).")
+    ct = file.content_type if file.content_type in ALLOWED_IMAGE_MIME else MIME_TYPES.get(ext, "image/png")
+    path = f"{APP_NAME}/images/{uuid.uuid4()}.{ext}"
     put_object(path, data, ct)
     await db.media.insert_one({
-        "id": str(uuid.uuid4()), "storage_path": path, "original_filename": file.filename,
+        "id": str(uuid.uuid4()), "storage_path": path,
+        "original_filename": sanitize_filename(file.filename, f"image.{ext}"),
         "content_type": ct, "is_deleted": False, "created_at": now_iso(),
     })
     return {"status": "ok", "path": path, "url": f"/api/media/{path}"}
@@ -666,11 +831,26 @@ async def shutdown():
     client.close()
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    # Ne jamais exposer de stack trace / secret / détail interne au public.
+    logger.exception("Unhandled error on %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(status_code=500, content={"detail": "Une erreur interne est survenue. Réessayez plus tard."})
+
+
 app.include_router(api)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=".*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+# CORS : configurable via CORS_ORIGINS. "*" (ou vide) = reflet de l'origine (preview/dev).
+# En production, définir CORS_ORIGINS="https://auben-preview-shop.emergent.host" (+ autres si besoin).
+_cors = (os.environ.get("CORS_ORIGINS") or "*").strip()
+if _cors == "*":
+    app.add_middleware(
+        CORSMiddleware, allow_origin_regex=".*",
+        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in _cors.split(",") if o.strip()],
+        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    )

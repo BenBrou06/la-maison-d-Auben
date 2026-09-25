@@ -42,7 +42,7 @@ export default function PaymentSuccess() {
 
   return (
     <>
-      <Seo title="Confirmation de commande — La Maison d'Auben" description="Merci pour votre achat." path="/paiement/succes" />
+      <Seo title="Confirmation de commande — La Maison d'Auben" description="Merci pour votre achat." path="/paiement/succes" noindex />
       <div className="container-app flex min-h-[70vh] items-center justify-center py-16">
         <div className="w-full max-w-lg text-center">
           {state === "checking" && (

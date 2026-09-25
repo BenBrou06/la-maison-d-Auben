@@ -17,7 +17,7 @@ export default function DownloadPage() {
 
   return (
     <>
-      <Seo title="Téléchargement — La Maison d'Auben" description="Votre lien de téléchargement sécurisé." path={`/telechargement/${token}`} />
+      <Seo title="Téléchargement — La Maison d'Auben" description="Votre lien de téléchargement sécurisé." path={`/telechargement/${token}`} noindex />
       <div className="container-app flex min-h-[60vh] items-center justify-center py-16">
         <div className="w-full max-w-lg text-center">
           {state === "loading" && <Loader2 className="mx-auto h-12 w-12 animate-spin text-[#3B6B4C]" />}

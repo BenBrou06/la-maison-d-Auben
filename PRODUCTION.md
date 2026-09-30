@@ -22,11 +22,11 @@ Obligatoires :
 ```
 MONGO_URL=...            # BD de production
 DB_NAME=...
-CORS_ORIGINS=*
+CORS_ORIGINS=https://votre-domaine-frontend.example
 STRIPE_MODE=live
 STRIPE_SECRET_KEY=rk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...        # du webhook LIVE (étape 1 ci-dessous)
-PUBLIC_BASE_URL=https://auben-preview-shop.emergent.host
+PUBLIC_BASE_URL=https://votre-domaine-frontend.example
 EMERGENT_EMAIL_KEY=...                 # e-mails (infra Emergent)
 EMAIL_FROM_NAME=La Maison d'Auben
 OWNER_EMAIL=benbrou06@gmail.com        # notification vendeur

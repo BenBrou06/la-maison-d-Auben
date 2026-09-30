@@ -5,12 +5,14 @@ import logging
 import secrets
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
+from urllib.parse import urlparse
 
 import stripe
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Response
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from pymongo.errors import DuplicateKeyError
+from pymongo import ReturnDocument
 from starlette.responses import JSONResponse
 
 from database import db
@@ -26,6 +28,25 @@ logger = logging.getLogger(__name__)
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_MODE = (os.environ.get("STRIPE_MODE") or "test").strip().lower()
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+
+
+def _valid_public_base_url(value: str, require_https: bool) -> bool:
+    """Accept only an absolute origin: no credentials, query, fragment or path."""
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    return (
+        parsed.scheme in ({"https"} if require_https else {"http", "https"})
+        and bool(parsed.netloc)
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.path in ("", "/")
+    )
 
 # Aucun fallback test : si la clé est absente, échec explicite (pas de mode Test silencieux).
 if not STRIPE_SECRET_KEY:
@@ -50,14 +71,19 @@ if STRIPE_MODE != "live" and _is_live_key and os.environ.get("STRIPE_ALLOW_LIVE"
         "Passez STRIPE_MODE=live en production, ou utilisez une clé de test en preview "
         "(override volontaire : STRIPE_ALLOW_LIVE=1)."
     )
-if STRIPE_MODE == "live" and not STRIPE_WEBHOOK_SECRET:
-    logger.warning("STRIPE_MODE=live sans STRIPE_WEBHOOK_SECRET : le webhook rejettera les événements (le fallback polling prendra le relais). Configurez le whsec_ de production.")
+if not PUBLIC_BASE_URL:
+    raise RuntimeError("CONFIG ERROR: PUBLIC_BASE_URL est obligatoire pour les redirections et e-mails.")
+if not _valid_public_base_url(PUBLIC_BASE_URL, require_https=STRIPE_MODE == "live"):
+    raise RuntimeError("CONFIG ERROR: PUBLIC_BASE_URL doit être une origine HTTP(S) valide (HTTPS obligatoire en live).")
+if STRIPE_MODE == "live" and not STRIPE_WEBHOOK_SECRET.strip():
+    raise RuntimeError("CONFIG ERROR: STRIPE_WEBHOOK_SECRET est obligatoire quand STRIPE_MODE=live.")
 
 stripe.api_key = STRIPE_SECRET_KEY
 logger.info("Stripe initialisé | mode=%s | cle=%s", STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
 
 DOWNLOAD_TTL_DAYS = 30
 DOWNLOAD_LIMIT = 25
+EMAIL_SENDING_STALE_SECONDS = 15 * 60
 
 # Uploads admin : garde-fous (taille, extensions, MIME)
 MAX_IMAGE_BYTES = 8 * 1024 * 1024      # 8 Mo
@@ -137,7 +163,6 @@ class ContactInput(BaseModel):
 
 class CheckoutInput(BaseModel):
     lookup_key: str
-    origin_url: str
 
 
 class LoginInput(BaseModel):
@@ -343,13 +368,12 @@ async def create_checkout(request: Request, req: CheckoutInput):
         raise HTTPException(500, f"Prix introuvable : {req.lookup_key}")
     price = prices[0]
     product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
-    origin = (req.origin_url or "").rstrip("/")
     kwargs = dict(
         line_items=[{"price": price.id, "quantity": 1}],
         mode="payment",
-        success_url=f"{origin}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{origin}/paiement/annule",
-        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else "", "origin_url": origin},
+        success_url=f"{PUBLIC_BASE_URL}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{PUBLIC_BASE_URL}/paiement/annule",
+        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else ""},
     )
     try:
         session = stripe.checkout.Session.create(**kwargs, managed_payments={"enabled": True})
@@ -365,7 +389,6 @@ async def create_checkout(request: Request, req: CheckoutInput):
         "session_id": session.id, "lookup_key": req.lookup_key,
         "product_slug": product["slug"] if product else "",
         "amount": (price.unit_amount or 0) / 100.0, "currency": price.currency,
-        "origin_url": origin,
         "status": "initiated", "payment_status": "pending",
         "created_at": now_iso(), "updated_at": now_iso(),
     })
@@ -375,9 +398,14 @@ async def create_checkout(request: Request, req: CheckoutInput):
 async def _send_customer_email(order: dict):
     """Envoi idempotent + rejouable de l'e-mail client (état email_status propre)."""
     sid = order["session_id"]
+    stale_before = (datetime.now(timezone.utc) - timedelta(seconds=EMAIL_SENDING_STALE_SECONDS)).isoformat()
     claim = await db.orders.update_one(
-        {"session_id": sid, "email_status": {"$in": ["pending", "failed"]}},
-        {"$set": {"email_status": "sending"}},
+        {"session_id": sid, "$or": [
+            {"email_status": {"$in": ["pending", "failed"]}},
+            {"email_status": "sending", "email_sending_at": {"$lte": stale_before}},
+            {"email_status": "sending", "email_sending_at": {"$exists": False}},
+        ]},
+        {"$set": {"email_status": "sending", "email_sending_at": now_iso()}},
     )
     if claim.modified_count == 0:
         return  # déjà envoyé ou en cours (pas de double envoi)
@@ -385,11 +413,7 @@ async def _send_customer_email(order: dict):
     if not email:
         await db.orders.update_one({"session_id": sid}, {"$set": {"email_status": "skipped"}})
         return
-    tx = await db.payment_transactions.find_one({"session_id": sid}, {"_id": 0})
-    base = ((tx or {}).get("origin_url")
-            or os.environ.get("PUBLIC_BASE_URL")
-            or os.environ.get("REACT_APP_BACKEND_URL", "")).rstrip("/")
-    download_url = f"{base}/telechargement/{order['download_token']}"
+    download_url = f"{PUBLIC_BASE_URL}/telechargement/{order['download_token']}"
     try:
         eid = await send_email(
             to=email,
@@ -400,10 +424,11 @@ async def _send_customer_email(order: dict):
             ),
         )
         await db.orders.update_one({"session_id": sid}, {"$set": {
-            "email_status": "sent" if eid else "failed", "email_sent": bool(eid)}})
+            "email_status": "sent" if eid else "failed", "email_sent": bool(eid),
+            "email_sending_at": None}})
     except Exception as e:
         logger.error("Confirmation email error (order %s): %s", order["id"], e)
-        await db.orders.update_one({"session_id": sid}, {"$set": {"email_status": "failed"}})
+        await db.orders.update_one({"session_id": sid}, {"$set": {"email_status": "failed", "email_sending_at": None}})
 
 
 async def _send_owner_email(order: dict):
@@ -412,9 +437,14 @@ async def _send_owner_email(order: dict):
     if not owner_email:
         return
     sid = order["session_id"]
+    stale_before = (datetime.now(timezone.utc) - timedelta(seconds=EMAIL_SENDING_STALE_SECONDS)).isoformat()
     claim = await db.orders.update_one(
-        {"session_id": sid, "owner_email_status": {"$in": ["pending", "failed"]}},
-        {"$set": {"owner_email_status": "sending"}},
+        {"session_id": sid, "$or": [
+            {"owner_email_status": {"$in": ["pending", "failed"]}},
+            {"owner_email_status": "sending", "owner_email_sending_at": {"$lte": stale_before}},
+            {"owner_email_status": "sending", "owner_email_sending_at": {"$exists": False}},
+        ]},
+        {"$set": {"owner_email_status": "sending", "owner_email_sending_at": now_iso()}},
     )
     if claim.modified_count == 0:
         return
@@ -429,10 +459,11 @@ async def _send_owner_email(order: dict):
             ),
         )
         await db.orders.update_one({"session_id": sid}, {"$set": {
-            "owner_email_status": "sent" if oid else "failed", "owner_notified": bool(oid)}})
+            "owner_email_status": "sent" if oid else "failed", "owner_notified": bool(oid),
+            "owner_email_sending_at": None}})
     except Exception as e:
         logger.error("Owner email error (order %s): %s", order["id"], e)
-        await db.orders.update_one({"session_id": sid}, {"$set": {"owner_email_status": "failed"}})
+        await db.orders.update_one({"session_id": sid}, {"$set": {"owner_email_status": "failed", "owner_email_sending_at": None}})
 
 
 async def fulfill_order(session_id: str):
@@ -573,7 +604,21 @@ async def download(token: str):
     if not product or not product.get("download_storage_path"):
         raise HTTPException(404, "Le fichier n'est pas encore disponible. Nous vous contacterons.")
     data, ct = get_object(product["download_storage_path"])
-    await db.orders.update_one({"download_token": token}, {"$inc": {"download_count": 1}})
+    # Reserve the download atomically. A concurrent request cannot pass once the
+    # per-order limit has been reached.
+    reserved = await db.orders.find_one_and_update(
+        {
+            "download_token": token,
+            "$expr": {"$lt": [
+                {"$ifNull": ["$download_count", 0]},
+                {"$ifNull": ["$download_limit", DOWNLOAD_LIMIT]},
+            ]},
+        },
+        {"$inc": {"download_count": 1}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not reserved:
+        raise HTTPException(429, "Nombre de téléchargements dépassé. Contactez-nous.")
     filename = product.get("download_filename", f"{product['slug']}.xlsx")
     return Response(content=data, media_type=ct, headers={
         "Content-Disposition": f'attachment; filename="{filename}"'
@@ -840,17 +885,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(api)
 
-# CORS : configurable via CORS_ORIGINS. "*" (ou vide) = reflet de l'origine (preview/dev).
-# En production, définir CORS_ORIGINS="https://auben-preview-shop.emergent.host" (+ autres si besoin).
-_cors = (os.environ.get("CORS_ORIGINS") or "*").strip()
-if _cors == "*":
-    app.add_middleware(
-        CORSMiddleware, allow_origin_regex=".*",
-        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[o.strip() for o in _cors.split(",") if o.strip()],
-        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-    )
+# CORS is an explicit allow-list. Never reflect arbitrary origins, especially
+# because administrative requests use an Authorization header.
+_cors_origins = [o.strip().rstrip("/") for o in (os.environ.get("CORS_ORIGINS") or "").split(",") if o.strip()]
+if "*" in _cors_origins:
+    raise RuntimeError("CONFIG ERROR: CORS_ORIGINS ne peut pas contenir '*'.")
+if STRIPE_MODE == "live" and not _cors_origins:
+    raise RuntimeError("CONFIG ERROR: CORS_ORIGINS doit contenir les origines frontend en live.")
+if any(not _valid_public_base_url(origin, require_https=STRIPE_MODE == "live") for origin in _cors_origins):
+    raise RuntimeError("CONFIG ERROR: chaque CORS_ORIGINS doit être une origine HTTP(S) valide (HTTPS obligatoire en live).")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)

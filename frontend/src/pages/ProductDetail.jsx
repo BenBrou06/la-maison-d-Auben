@@ -25,7 +25,7 @@ export default function ProductDetail() {
   const buy = async () => {
     setBuying(true);
     try {
-      const { checkout_url } = await createCheckout({ lookup_key: product.lookup_key, origin_url: window.location.origin });
+      const { checkout_url } = await createCheckout({ lookup_key: product.lookup_key });
       window.location.href = checkout_url;
     } catch (e) {
       toast.error("Le paiement n'a pas pu démarrer. Réessayez.");

@@ -4,11 +4,18 @@ import time
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://auben-preview-shop.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("TEST_BACKEND_URL", "").rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "admin@lamaisondauben.fr"
-ADMIN_PASSWORD = "Auben2026!"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "")
+
+# These tests exercise a real backend and create data. They must never silently
+# target a shared preview environment or use credentials stored in the repository.
+pytestmark = pytest.mark.skipif(
+    not (BASE_URL and ADMIN_EMAIL and ADMIN_PASSWORD),
+    reason="Set TEST_BACKEND_URL, TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD to run integration tests.",
+)
 
 
 @pytest.fixture(scope="session")
@@ -112,7 +119,10 @@ class TestNewsletterContact:
 class TestPayments:
     def test_checkout(self, s):
         r = s.post(f"{API}/payments/checkout", json={
-            "lookup_key": "budget_mensuel", "origin_url": BASE_URL,
+            "lookup_key": "budget_mensuel",
+            # Extra client input is deliberately ignored; the backend uses only
+            # its configured PUBLIC_BASE_URL for Stripe redirects and e-mails.
+            "origin_url": "https://untrusted.invalid",
         })
         assert r.status_code == 200, r.text
         data = r.json()
@@ -243,7 +253,7 @@ class TestTaxInclusiveAndOwnerNotified:
         assert r.status_code == 200
         sid = r.json()["session_id"]
         assert sid.startswith("cs_test_"), f"Expected cs_test_ prefix, got {sid}"
-        # payment_transactions record must exist with origin_url stored -> verified via status endpoint (needs no auth)
+        # payment_transactions record must exist; client origin is never stored.
         r2 = s.get(f"{API}/payments/status/{sid}")
         assert r2.status_code == 200
 

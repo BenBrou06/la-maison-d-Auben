@@ -51,7 +51,16 @@ if STRIPE_MODE != "live" and _is_live_key and os.environ.get("STRIPE_ALLOW_LIVE"
         "(override volontaire : STRIPE_ALLOW_LIVE=1)."
     )
 if STRIPE_MODE == "live" and not STRIPE_WEBHOOK_SECRET:
-    logger.warning("STRIPE_MODE=live sans STRIPE_WEBHOOK_SECRET : le webhook rejettera les événements (le fallback polling prendra le relais). Configurez le whsec_ de production.")
+    raise RuntimeError(
+        "CONFIG ERROR: STRIPE_MODE=live sans STRIPE_WEBHOOK_SECRET. "
+        "Le webhook signé est le mécanisme principal de livraison en production : "
+        "configurez le whsec_ de l'endpoint LIVE avant de démarrer."
+    )
+
+# URL serveur de confiance (jamais fournie par le client) pour les URLs Stripe et les liens e-mail.
+PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
+if STRIPE_MODE == "live" and not PUBLIC_BASE_URL.startswith("https://"):
+    raise RuntimeError("CONFIG ERROR: PUBLIC_BASE_URL (https) est requise en production.")
 
 stripe.api_key = STRIPE_SECRET_KEY
 logger.info("Stripe initialisé | mode=%s | cle=%s", STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
@@ -343,13 +352,14 @@ async def create_checkout(request: Request, req: CheckoutInput):
         raise HTTPException(500, f"Prix introuvable : {req.lookup_key}")
     price = prices[0]
     product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
-    origin = (req.origin_url or "").rstrip("/")
+    # SÉCURITÉ : ne jamais utiliser l'origin_url fourni par le client pour des URLs sensibles.
+    base = PUBLIC_BASE_URL
     kwargs = dict(
         line_items=[{"price": price.id, "quantity": 1}],
         mode="payment",
-        success_url=f"{origin}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{origin}/paiement/annule",
-        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else "", "origin_url": origin},
+        success_url=f"{base}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/paiement/annule",
+        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else ""},
     )
     try:
         session = stripe.checkout.Session.create(**kwargs, managed_payments={"enabled": True})
@@ -365,31 +375,37 @@ async def create_checkout(request: Request, req: CheckoutInput):
         "session_id": session.id, "lookup_key": req.lookup_key,
         "product_slug": product["slug"] if product else "",
         "amount": (price.unit_amount or 0) / 100.0, "currency": price.currency,
-        "origin_url": origin,
         "status": "initiated", "payment_status": "pending",
         "created_at": now_iso(), "updated_at": now_iso(),
     })
     return {"checkout_url": session.url, "session_id": session.id}
 
 
+async def _claim_email(sid: str, field: str) -> bool:
+    """Réclame l'envoi de façon atomique. Rejoue aussi un 'sending' bloqué > 5 min (crash)."""
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    at = f"{field}_at"
+    res = await db.orders.update_one(
+        {"session_id": sid, "$or": [
+            {field: {"$in": ["pending", "failed"]}},
+            {field: "sending", at: {"$lt": stale}},
+            {field: "sending", at: {"$exists": False}},
+        ]},
+        {"$set": {field: "sending", at: now_iso()}},
+    )
+    return res.modified_count > 0
+
+
 async def _send_customer_email(order: dict):
     """Envoi idempotent + rejouable de l'e-mail client (état email_status propre)."""
     sid = order["session_id"]
-    claim = await db.orders.update_one(
-        {"session_id": sid, "email_status": {"$in": ["pending", "failed"]}},
-        {"$set": {"email_status": "sending"}},
-    )
-    if claim.modified_count == 0:
-        return  # déjà envoyé ou en cours (pas de double envoi)
+    if not await _claim_email(sid, "email_status"):
+        return  # déjà envoyé ou en cours récent (pas de double envoi)
     email = order.get("customer_email")
     if not email:
         await db.orders.update_one({"session_id": sid}, {"$set": {"email_status": "skipped"}})
         return
-    tx = await db.payment_transactions.find_one({"session_id": sid}, {"_id": 0})
-    base = ((tx or {}).get("origin_url")
-            or os.environ.get("PUBLIC_BASE_URL")
-            or os.environ.get("REACT_APP_BACKEND_URL", "")).rstrip("/")
-    download_url = f"{base}/telechargement/{order['download_token']}"
+    download_url = f"{PUBLIC_BASE_URL}/telechargement/{order['download_token']}"
     try:
         eid = await send_email(
             to=email,
@@ -412,11 +428,7 @@ async def _send_owner_email(order: dict):
     if not owner_email:
         return
     sid = order["session_id"]
-    claim = await db.orders.update_one(
-        {"session_id": sid, "owner_email_status": {"$in": ["pending", "failed"]}},
-        {"$set": {"owner_email_status": "sending"}},
-    )
-    if claim.modified_count == 0:
+    if not await _claim_email(sid, "owner_email_status"):
         return
     try:
         oid = await send_email(
@@ -567,13 +579,23 @@ async def download(token: str):
     exp = datetime.fromisoformat(order["download_expires_at"])
     if datetime.now(timezone.utc) > exp:
         raise HTTPException(410, "Ce lien de téléchargement a expiré. Contactez-nous pour le renouveler.")
-    if order.get("download_count", 0) >= order.get("download_limit", DOWNLOAD_LIMIT):
-        raise HTTPException(429, "Nombre de téléchargements dépassé. Contactez-nous.")
+    limit = order.get("download_limit", DOWNLOAD_LIMIT)
     product = await db.products.find_one({"slug": order["product_slug"]}, {"_id": 0})
     if not product or not product.get("download_storage_path"):
         raise HTTPException(404, "Le fichier n'est pas encore disponible. Nous vous contacterons.")
-    data, ct = get_object(product["download_storage_path"])
-    await db.orders.update_one({"download_token": token}, {"$inc": {"download_count": 1}})
+    # Incrément ATOMIQUE conditionné : empêche de dépasser la limite via des requêtes concurrentes.
+    claim = await db.orders.update_one(
+        {"download_token": token, "download_count": {"$lt": limit}},
+        {"$inc": {"download_count": 1}},
+    )
+    if claim.modified_count == 0:
+        raise HTTPException(429, "Nombre de téléchargements dépassé. Contactez-nous.")
+    try:
+        data, ct = get_object(product["download_storage_path"])
+    except Exception:
+        # En cas d'échec de lecture, rembourser le crédit consommé.
+        await db.orders.update_one({"download_token": token}, {"$inc": {"download_count": -1}})
+        raise HTTPException(503, "Téléchargement momentanément indisponible. Réessayez.")
     filename = product.get("download_filename", f"{product['slug']}.xlsx")
     return Response(content=data, media_type=ct, headers={
         "Content-Disposition": f'attachment; filename="{filename}"'

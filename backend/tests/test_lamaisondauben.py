@@ -7,8 +7,22 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://auben-preview-shop.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "admin@lamaisondauben.fr"
-ADMIN_PASSWORD = "Auben2026!"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+
+# Fallback: load from backend/.env if not set in the current process environment
+if not ADMIN_EMAIL or not ADMIN_PASSWORD:
+    try:
+        with open("/app/backend/.env", "r") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line.startswith("ADMIN_EMAIL=") and not ADMIN_EMAIL:
+                    ADMIN_EMAIL = _line.split("=", 1)[1].strip().strip('"').strip("'")
+                elif _line.startswith("ADMIN_PASSWORD=") and not ADMIN_PASSWORD:
+                    ADMIN_PASSWORD = _line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+assert ADMIN_EMAIL and ADMIN_PASSWORD, "ADMIN_EMAIL/ADMIN_PASSWORD must be set in env or /app/backend/.env"
 
 
 @pytest.fixture(scope="session")
@@ -483,4 +497,219 @@ class TestTaxInclusiveAndOwnerNotified:
         cd = r2.headers.get("content-disposition", "")
         assert "attachment" in cd and "Budget-mensuel.xlsx" in cd
         assert len(r2.content) > 500_000  # real ~1MB xlsx
+
+
+# =============================================================================
+# ROUND-2 HARDENING FIXES
+# =============================================================================
+class TestOriginUrlHardening:
+    """FIX1: origin_url is client-provided but MUST NEVER influence Stripe success_url / cancel_url.
+    The server must always use PUBLIC_BASE_URL. Returned checkout_url must be on checkout.stripe.com."""
+
+    def test_hostile_origin_url_is_ignored(self, s):
+        hostile = "https://evil-hacker.example.com"
+        r = s.post(f"{API}/payments/checkout", json={
+            "lookup_key": "budget_mensuel",
+            "origin_url": hostile,
+        })
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "checkout_url" in body and "session_id" in body
+        sid = body["session_id"]
+        assert sid.startswith("cs_test_"), f"Expected cs_test_ prefix, got {sid}"
+        # The returned URL must be on Stripe's hosted checkout — never on client-supplied host
+        assert "checkout.stripe.com" in body["checkout_url"], body["checkout_url"]
+        assert "evil-hacker.example.com" not in body["checkout_url"]
+        # Fetch the Stripe session server-side via Stripe API to inspect success_url / cancel_url.
+        # Use the test secret key from backend/.env.
+        try:
+            import stripe as _stripe
+            with open("/app/backend/.env", "r") as f:
+                for line in f:
+                    if line.startswith("STRIPE_SECRET_KEY="):
+                        _stripe.api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+            sess = _stripe.checkout.Session.retrieve(sid)
+            # success_url and cancel_url must be on the server's PUBLIC_BASE_URL (preview domain),
+            # NOT on the hostile client-supplied domain.
+            assert "evil-hacker.example.com" not in (sess.success_url or ""), sess.success_url
+            assert "evil-hacker.example.com" not in (sess.cancel_url or ""), sess.cancel_url
+            assert (sess.success_url or "").startswith("https://") and "preview.emergentagent.com" in sess.success_url
+            assert "/paiement/succes" in (sess.success_url or "")
+            assert "/paiement/annule" in (sess.cancel_url or "")
+        except ImportError:
+            pytest.skip("stripe library not available for deep server-side check")
+
+    def test_normal_origin_url_still_returns_cs_test_session(self, s):
+        r = s.post(f"{API}/payments/checkout", json={
+            "lookup_key": "budget_mensuel", "origin_url": BASE_URL,
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["session_id"].startswith("cs_test_")
+
+
+class TestAtomicDownloadLimit:
+    """FIX4: The atomic conditional $inc must prevent download_count from exceeding download_limit
+    even under high concurrency. Over-limit requests must return 429."""
+
+    def test_concurrent_downloads_do_not_exceed_limit(self, s, admin_headers):
+        # Find a paid Budget mensuel order.
+        r = s.get(f"{API}/admin/orders", headers=admin_headers)
+        assert r.status_code == 200
+        paid = [o for o in r.json()
+                if o.get("product_slug") == "budget-mensuel" and o.get("status") == "paid"]
+        if not paid:
+            pytest.skip("No paid order available to test download limit")
+        paid.sort(key=lambda o: o.get("created_at", ""), reverse=True)
+        order = paid[0]
+        tok = order["download_token"]
+
+        # Reset counter and cap limit to a small value directly via Mongo for a deterministic test.
+        import motor.motor_asyncio, asyncio, os as _os
+        mongo_url = None
+        db_name = None
+        with open("/app/backend/.env", "r") as f:
+            for line in f:
+                if line.startswith("MONGO_URL="):
+                    mongo_url = line.split("=", 1)[1].strip().strip('"').strip("'")
+                elif line.startswith("DB_NAME="):
+                    db_name = line.split("=", 1)[1].strip().strip('"').strip("'")
+        assert mongo_url and db_name
+
+        SMALL_LIMIT = 5
+
+        async def _reset():
+            client = motor.motor_asyncio.AsyncIOMotorClient(mongo_url)
+            await client[db_name].orders.update_one(
+                {"download_token": tok},
+                {"$set": {"download_count": 0, "download_limit": SMALL_LIMIT}},
+            )
+            client.close()
+
+        asyncio.get_event_loop().run_until_complete(_reset()) if False else asyncio.run(_reset())
+
+        # Fire many concurrent GETs.
+        from concurrent.futures import ThreadPoolExecutor
+        N = 30
+        def hit(_):
+            rr = requests.get(f"{API}/download/{tok}")
+            return rr.status_code
+        with ThreadPoolExecutor(max_workers=20) as ex:
+            codes = list(ex.map(hit, range(N)))
+
+        n_200 = sum(1 for c in codes if c == 200)
+        n_429 = sum(1 for c in codes if c == 429)
+        # Successful downloads must never exceed the limit.
+        assert n_200 <= SMALL_LIMIT, f"Atomic guard failed: {n_200} 200s > limit {SMALL_LIMIT}. Codes={codes}"
+        # And under contention we should observe at least one 429 (over-limit).
+        assert n_429 >= (N - SMALL_LIMIT) - 2, f"Expected ~{N-SMALL_LIMIT} 429s, got {n_429}. Codes={codes}"
+        # Combined must cover all requests.
+        assert n_200 + n_429 == N, f"Unexpected non-200/429 responses: {codes}"
+
+        # Verify DB state: download_count is exactly the number of 200s and <= limit.
+        async def _check():
+            client = motor.motor_asyncio.AsyncIOMotorClient(mongo_url)
+            doc = await client[db_name].orders.find_one({"download_token": tok}, {"_id": 0})
+            client.close()
+            return doc
+        doc = asyncio.run(_check())
+        assert doc["download_count"] <= SMALL_LIMIT
+        assert doc["download_count"] == n_200
+
+        # Additional call after limit must return 429.
+        r_extra = requests.get(f"{API}/download/{tok}")
+        assert r_extra.status_code == 429, f"Expected 429 over-limit, got {r_extra.status_code}"
+
+        # Restore state so subsequent tests can still download.
+        async def _restore():
+            client = motor.motor_asyncio.AsyncIOMotorClient(mongo_url)
+            await client[db_name].orders.update_one(
+                {"download_token": tok},
+                {"$set": {"download_count": 0, "download_limit": 25}},
+            )
+            client.close()
+        asyncio.run(_restore())
+
+
+class TestEmailRetryAndRecovery:
+    """FIX5: email_status and owner_email_status are separate fields; resend-email re-attempts
+    without duplicating the order; a stale 'sending' state (>5 min) can be reclaimed."""
+
+    def _get_latest_paid(self, s, admin_headers):
+        r = s.get(f"{API}/admin/orders", headers=admin_headers)
+        assert r.status_code == 200
+        paid = [o for o in r.json()
+                if o.get("product_slug") == "budget-mensuel" and o.get("status") == "paid"
+                and "email_status" in o and "owner_email_status" in o]
+        if not paid:
+            pytest.skip("No post-fix paid order with separate email_status fields")
+        paid.sort(key=lambda o: o.get("created_at", ""), reverse=True)
+        return paid[0]
+
+    def test_resend_email_does_not_duplicate_order(self, s, admin_headers):
+        order = self._get_latest_paid(s, admin_headers)
+        oid = order["id"]
+        r = s.post(f"{API}/admin/orders/{oid}/resend-email", headers=admin_headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "email_status" in body
+        # Check order count did not change for this id.
+        r2 = s.get(f"{API}/admin/orders", headers=admin_headers)
+        matching = [o for o in r2.json() if o.get("id") == oid]
+        assert len(matching) == 1
+        refreshed = matching[0]
+        # Separate fields still present and independently managed.
+        assert "email_status" in refreshed
+        assert "owner_email_status" in refreshed
+
+    def test_resend_email_missing_order_404(self, s, admin_headers):
+        r = s.post(f"{API}/admin/orders/nonexistent-id-xyz/resend-email", headers=admin_headers)
+        assert r.status_code == 404
+
+    def test_stale_sending_state_can_be_reclaimed(self, s, admin_headers):
+        """_claim_email allows retry when a 'sending' state is older than 5 minutes."""
+        order = self._get_latest_paid(s, admin_headers)
+        oid = order["id"]
+        sid = order["session_id"]
+
+        import motor.motor_asyncio, asyncio
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        mongo_url = None
+        db_name = None
+        with open("/app/backend/.env", "r") as f:
+            for line in f:
+                if line.startswith("MONGO_URL="):
+                    mongo_url = line.split("=", 1)[1].strip().strip('"').strip("'")
+                elif line.startswith("DB_NAME="):
+                    db_name = line.split("=", 1)[1].strip().strip('"').strip("'")
+
+        stale_ts = (_dt.now(_tz.utc) - _td(minutes=10)).isoformat()
+
+        async def _set_stale():
+            client = motor.motor_asyncio.AsyncIOMotorClient(mongo_url)
+            await client[db_name].orders.update_one(
+                {"id": oid},
+                {"$set": {"email_status": "sending", "email_status_at": stale_ts}},
+            )
+            client.close()
+
+        async def _read():
+            client = motor.motor_asyncio.AsyncIOMotorClient(mongo_url)
+            d = await client[db_name].orders.find_one({"id": oid}, {"_id": 0})
+            client.close()
+            return d
+
+        asyncio.run(_set_stale())
+        # The endpoint resets to 'pending' then calls _send_customer_email which claims -> 'sending' fresh.
+        r = s.post(f"{API}/admin/orders/{oid}/resend-email", headers=admin_headers)
+        assert r.status_code == 200, r.text
+        after = asyncio.run(_read())
+        # Must NOT still be stale-sending: status should be sent/failed/skipped/sending-fresh.
+        assert after.get("email_status") in ("sent", "failed", "skipped", "sending", "pending"), after.get("email_status")
+        # If it stayed 'sending' it must have a fresh timestamp (not the stale one).
+        if after.get("email_status") == "sending":
+            assert after.get("email_status_at") != stale_ts, "Stale 'sending' was NOT reclaimed"
+        # Order count still 1
+        r2 = s.get(f"{API}/admin/orders", headers=admin_headers)
+        assert sum(1 for o in r2.json() if o.get("id") == oid) == 1
 

@@ -29,10 +29,21 @@ Jeunes adultes, étudiants, jeunes actifs, couples, familles, indépendants — 
 Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** auto-généré, remplaçable en 1 clic via l'admin (onglet Produits → Fichier Excel).
 
 ## Tests
-- iteration_1 : 22/22 backend pass, achat Stripe complet E2E, admin OK. 100% backend / 100% frontend.
+- iteration_1 : 22/22 backend pass, achat Stripe complet E2E, admin OK.
+- iteration_6 : 52/52 pytest pass (sécurité prod : origin hostile ignoré, download atomique, idempotence, rate-limit, uploads, admin).
+
+## Mise en PRODUCTION (2026-06-04) — LIVE
+- Pages légales RÉELLES publiées (Mentions légales, CGV 16 sections, Confidentialité/RGPD, Cookies) avec infos : BROU, micro-entreprise, 885 Chemin de la Sine 06140 Vence, SIREN 130351562 / SIRET 13035156200017, lamaisondauben@gmail.com, TVA art. 293 B, hébergeur Emergent, directeur pub. BROU. Médiation = « INFORMATION À VENIR PROCHAINEMENT » (médiateur à désigner — action user).
+- Page produit : mention consentement CGV + renoncement droit de rétractation (art. L.221-28).
+- Fichier Excel par défaut remplacé par le fichier réel fourni (1,07 Mo) : en base + empaqueté dans `backend/assets/Budget-mensuel-DEFAULT.xlsx` (seed non destructif).
+- Déploiement Emergent OK : https://auben-preview-shop.emergent.host (HTTP 200 stable après cold start initial).
+- Stripe LIVE confirmé : checkout technique → `cs_live_…` (aucun paiement réel). Webhook LIVE /api/stripe/webhook (4 événements) configuré côté user ; backend LIVE démarré (donc whsec + PUBLIC_BASE_URL HTTPS valides).
+- Continuité données : prod = même MONGO_URL/DB_NAME + EMERGENT_LLM_KEY → produit, image et fichier présents.
+
+## Actions manuelles restantes (user)
+- Adhérer à un médiateur de la consommation agréé puis renseigner nom + site dans les CGV.
+- Par sécurité : régénérer (roll) la clé Stripe LIVE restreinte et le secret webhook (transités en clair en chat).
+- Premier achat réel 7,99 € puis remboursement depuis Stripe pour valider la chaîne complète (webhook → commande → e-mails → téléchargement).
 
 ## Backlog (P1/P2)
-- Remplacer le placeholder par le vrai fichier Excel + vraies captures d'écran (galerie).
-- Compléter les mentions légales/CGV réelles.
-- P2 : comptes clients + bibliothèque de commandes ; analytics avec consentement ; ajout produits via UI admin (formulaire complet) ; version anglaise (i18n).
-- Split des routers backend (maintenabilité).
+- Version anglaise (i18n). Comptes clients + bibliothèque de commandes. Analytics avec consentement. Split routers backend.

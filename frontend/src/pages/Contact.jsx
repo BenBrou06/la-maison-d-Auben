@@ -35,7 +35,7 @@ export default function Contact() {
           <h1 className="mt-3 font-serif text-4xl font-bold text-[#1E3A2B] sm:text-5xl">Parlons-en</h1>
           <p className="mt-5 text-[#626D66]">Une question sur un produit, un souci de téléchargement, une idée ? Nous sommes une vraie petite équipe et nous lisons chaque message.</p>
           <div className="mt-8 space-y-4">
-            <div className="flex items-center gap-3 text-[#2C332E]"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF0EC] text-[#3B6B4C]"><Mail className="h-5 w-5" /></span> contact@lamaisondauben.fr <span className="text-xs text-[#87A987]">(à compléter)</span></div>
+            <a href="mailto:lamaisondauben@gmail.com" className="flex items-center gap-3 text-[#2C332E] hover:text-[#1E3A2B]" data-testid="contact-email-link"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF0EC] text-[#3B6B4C]"><Mail className="h-5 w-5" /></span> lamaisondauben@gmail.com</a>
             <div className="flex items-center gap-3 text-[#2C332E]"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF0EC] text-[#3B6B4C]"><MessageCircle className="h-5 w-5" /></span> Réponse sous 48h ouvrées</div>
           </div>
         </Reveal>

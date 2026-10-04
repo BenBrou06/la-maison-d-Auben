@@ -816,20 +816,20 @@ async def seed():
     for i, f in enumerate(seed_data.GLOBAL_FAQ):
         fid = f"faq-{i+1}"
         await db.faq.update_one({"id": fid}, {"$setOnInsert": {**f, "id": fid}}, upsert=True)
-    # Placeholder Excel file for Budget mensuel
+    # Fichier Excel par défaut (vrai fichier fourni) pour Budget mensuel.
     bm = await db.products.find_one({"slug": "budget-mensuel"})
     if bm and not bm.get("download_storage_path"):
         try:
-            data = seed_data.build_placeholder_xlsx()
-            path = f"{APP_NAME}/files/budget-mensuel/placeholder.xlsx"
+            data = seed_data.load_default_xlsx()
+            path = f"{APP_NAME}/files/budget-mensuel/{uuid.uuid4()}.xlsx"
             put_object(path, data, MIME_TYPES["xlsx"])
             await db.products.update_one({"slug": "budget-mensuel"}, {"$set": {
                 "download_storage_path": path,
-                "download_filename": "Budget-mensuel-La-Maison-dAuben.xlsx",
-                "download_is_placeholder": True,
+                "download_filename": seed_data.DEFAULT_XLSX_FILENAME,
+                "download_is_placeholder": False,
             }})
         except Exception as e:
-            logger.error(f"Placeholder xlsx seed failed: {e}")
+            logger.error(f"Default xlsx seed failed: {e}")
 
 
 @app.on_event("startup")

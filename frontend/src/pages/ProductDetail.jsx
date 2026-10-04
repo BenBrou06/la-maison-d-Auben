@@ -85,6 +85,13 @@ export default function ProductDetail() {
                 <span className="inline-flex items-center gap-1.5"><Download className="h-3.5 w-3.5 text-[#3B6B4C]" /> Accès immédiat</span>
                 <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-[#3B6B4C]" /> Lien de téléchargement protégé</span>
               </div>
+              <p className="mt-4 max-w-md text-xs leading-relaxed text-[#87A987]" data-testid="legal-consent-note">
+                En finalisant votre achat, vous acceptez nos{" "}
+                <Link to="/cgv" className="underline hover:text-[#3B6B4C]">conditions générales de vente</Link>{" "}
+                et demandez expressément la fourniture immédiate du fichier numérique. Vous reconnaissez
+                renoncer de ce fait à votre droit de rétractation dès le début du téléchargement
+                (article L.221-28 du Code de la consommation).
+              </p>
             </>
           ) : (
             <div className="mt-8 rounded-2xl bg-[#F2EDE4] p-6">

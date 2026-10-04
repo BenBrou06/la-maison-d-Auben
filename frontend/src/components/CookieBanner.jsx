@@ -21,7 +21,7 @@ export const CookieBanner = () => {
         <div className="flex items-start gap-3">
           <Cookie className="mt-0.5 h-5 w-5 shrink-0 text-[#3B6B4C]" />
           <p className="text-sm leading-relaxed text-[#2C332E]">
-            Nous utilisons uniquement les cookies nécessaires au bon fonctionnement du site. Vous pouvez accepter les cookies de mesure d'audience.{" "}
+            Nous utilisons uniquement les cookies et le stockage strictement nécessaires au bon fonctionnement du site. Aucun cookie publicitaire ni de suivi n'est utilisé.{" "}
             <Link to="/politique-cookies" className="underline hover:text-[#3B6B4C]">En savoir plus</Link>.
           </p>
         </div>

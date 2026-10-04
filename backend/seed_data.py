@@ -1,5 +1,17 @@
 import io
+import os
 from datetime import datetime, timezone
+
+# Fichier Excel par défaut réel pour « Budget mensuel » (fourni par la marque).
+DEFAULT_XLSX_PATH = os.path.join(os.path.dirname(__file__), "assets", "Budget-mensuel-DEFAULT.xlsx")
+DEFAULT_XLSX_FILENAME = "Budget-mensuel.xlsx"
+
+
+def load_default_xlsx() -> bytes:
+    """Lit le vrai fichier Excel par défaut livré avec l'application."""
+    with open(DEFAULT_XLSX_PATH, "rb") as f:
+        return f.read()
+
 
 # ---------------------------------------------------------------------------
 # Contenu initial (source de vérité data-driven — ajouter un produit ne demande

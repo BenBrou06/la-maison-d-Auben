@@ -7,7 +7,7 @@ import { formatPrice, t } from "@/lib/i18n";
 import { mediaUrl } from "@/lib/api";
 
 export const ProductCard = ({ product, category }) => {
-  const coming = product.status === "coming_soon";
+  const coming = !product.purchasable;
   const img = product.main_image ? mediaUrl(product.main_image) : "";
   return (
     <div
@@ -40,9 +40,13 @@ export const ProductCard = ({ product, category }) => {
             <span className="font-serif text-xl font-bold text-[#1E3A2B]">{formatPrice(product.price, product.currency)}</span>
           )}
           {coming ? (
-            <span className="inline-flex items-center gap-1.5 rounded-xl bg-[#F2EDE4] px-4 py-2.5 text-sm font-medium text-[#87A987]">
-              {t("badge.coming_soon")}
-            </span>
+            <Link
+              to={`/boutique/${product.slug}`}
+              data-testid={`product-cta-${product.slug}`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#F2EDE4] px-4 py-2.5 text-sm font-medium text-[#87A987] transition-all duration-200 hover:bg-[#1E3A2B] hover:text-[#FAF8F5]"
+            >
+              En savoir plus <ArrowRight className="h-4 w-4" />
+            </Link>
           ) : (
             <Link
               to={`/boutique/${product.slug}`}

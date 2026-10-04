@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse
 
 from database import db
 from auth import hash_password, verify_password, create_access_token, get_current_admin
-from storage import put_object, get_object, init_storage, APP_NAME, MIME_TYPES
+from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
 
@@ -174,6 +174,27 @@ class ProductInput(BaseModel):
     gallery: List[dict] = []
 
 
+class ProductUpdateInput(BaseModel):
+    """Mise à jour PARTIELLE : seuls les champs explicitement fournis sont modifiés."""
+    name: Optional[str] = None
+    category_slug: Optional[str] = None
+    lookup_key: Optional[str] = None
+    price: Optional[float] = None
+    currency: Optional[str] = None
+    badge: Optional[str] = None
+    status: Optional[str] = None
+    short_description: Optional[str] = None
+    description: Optional[str] = None
+    audience: Optional[str] = None
+    features: Optional[List[dict]] = None
+    contents: Optional[List[str]] = None
+    compatibility: Optional[List[str]] = None
+    faq: Optional[List[dict]] = None
+    seo: Optional[dict] = None
+    gallery: Optional[List[dict]] = None
+    main_image: Optional[str] = None
+
+
 class ArticleInput(BaseModel):
     slug: Optional[str] = None
     title: str
@@ -213,6 +234,17 @@ async def get_categories():
     return cats
 
 
+def with_purchasable(p):
+    """Un produit est achetable s'il a un VRAI fichier associé ET un prix défini."""
+    if p is not None:
+        p["purchasable"] = (
+            bool(p.get("download_storage_path"))
+            and not p.get("download_is_placeholder")
+            and bool(p.get("price"))
+        )
+    return p
+
+
 @api.get("/products")
 async def get_products(category: Optional[str] = None, q: Optional[str] = None, sort: Optional[str] = None):
     query = {}
@@ -231,7 +263,7 @@ async def get_products(category: Optional[str] = None, q: Optional[str] = None, 
         items.sort(key=lambda p: p.get("price") or 9999)
     elif sort == "price_desc":
         items.sort(key=lambda p: p.get("price") or -1, reverse=True)
-    return items
+    return [with_purchasable(p) for p in items]
 
 
 @api.get("/products/{slug}")
@@ -239,7 +271,7 @@ async def get_product(slug: str):
     p = await db.products.find_one({"slug": slug}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Produit introuvable")
-    return p
+    return with_purchasable(p)
 
 
 @api.get("/articles")
@@ -311,34 +343,39 @@ async def media(path: str):
 # --------------------------------------------------------------------------- #
 # Payments (Stripe)
 # --------------------------------------------------------------------------- #
+def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = "eur"):
+    """Assure un Product + Price Stripe pour ce lookup_key, à la valeur serveur donnée.
+    Mécanisme identique au catalogue : désactive un Price qui ne correspond pas et le recrée."""
+    product = None
+    for p in stripe.Product.list(active=True, limit=100).auto_paging_iter():
+        if p.to_dict().get("metadata", {}).get("emergent_product_id") == lookup_key:
+            product = p
+            break
+    if not product:
+        product = stripe.Product.create(
+            name=name, tax_code="txcd_10302000",
+            metadata={"managed_by": "emergent", "emergent_product_id": lookup_key},
+        )
+    amount = int(round(price * 100))
+    existing = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data
+    if existing:
+        e0 = existing[0]
+        if e0.unit_amount != amount or e0.currency != currency or e0.tax_behavior != "inclusive":
+            stripe.Price.modify(e0.id, active=False)
+            existing = []
+    if not existing:
+        stripe.Price.create(
+            product=product.id, unit_amount=amount, currency=currency,
+            lookup_key=lookup_key, transfer_lookup_key=True, tax_behavior="inclusive",
+        )
+
+
 def ensure_stripe_catalog():
     try:
         for entry in seed_data.PRODUCTS:
             if entry.get("status") != "available" or not entry.get("price"):
                 continue
-            lookup = entry["lookup_key"]
-            product = None
-            for p in stripe.Product.list(active=True, limit=100).auto_paging_iter():
-                if p.to_dict().get("metadata", {}).get("emergent_product_id") == lookup:
-                    product = p
-                    break
-            if not product:
-                product = stripe.Product.create(
-                    name=entry["name"], tax_code="txcd_10302000",
-                    metadata={"managed_by": "emergent", "emergent_product_id": lookup},
-                )
-            amount = int(round(entry["price"] * 100))
-            existing = stripe.Price.list(lookup_keys=[lookup], active=True, limit=1).data
-            if existing:
-                e0 = existing[0]
-                if e0.unit_amount != amount or e0.currency != entry["currency"] or e0.tax_behavior != "inclusive":
-                    stripe.Price.modify(e0.id, active=False)
-                    existing = []
-            if not existing:
-                stripe.Price.create(
-                    product=product.id, unit_amount=amount, currency=entry["currency"],
-                    lookup_key=lookup, transfer_lookup_key=True, tax_behavior="inclusive",
-                )
+            sync_stripe_price(entry["lookup_key"], entry["name"], entry["price"], entry["currency"])
         logger.info("Stripe catalog ensured")
     except Exception as e:
         logger.error(f"Stripe catalog setup failed: {e}")
@@ -347,11 +384,15 @@ def ensure_stripe_catalog():
 @api.post("/payments/checkout")
 async def create_checkout(request: Request, req: CheckoutInput):
     check_rate(request, "checkout", 20)
+    product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
+    # Gating : aucun checkout (ni session Stripe) pour un produit sans vrai fichier + prix.
+    if (not product or not product.get("download_storage_path")
+            or product.get("download_is_placeholder") or not product.get("price")):
+        raise HTTPException(409, "Produit indisponible à l'achat.")
     prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
     if not prices:
         raise HTTPException(500, f"Prix introuvable : {req.lookup_key}")
     price = prices[0]
-    product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
     # SÉCURITÉ : ne jamais utiliser l'origin_url fourni par le client pour des URLs sensibles.
     base = PUBLIC_BASE_URL
     kwargs = dict(
@@ -678,13 +719,32 @@ async def create_product(inp: ProductInput, admin=Depends(get_current_admin)):
 
 
 @api.put("/admin/products/{slug}")
-async def update_product(slug: str, inp: ProductInput, admin=Depends(get_current_admin)):
-    data = {k: v for k, v in inp.model_dump().items() if v is not None}
-    data.pop("slug", None)
-    await db.products.update_one({"slug": slug}, {"$set": data})
-    p = await db.products.find_one({"slug": slug}, {"_id": 0})
-    if not p:
+async def update_product(slug: str, inp: ProductUpdateInput, admin=Depends(get_current_admin)):
+    existing = await db.products.find_one({"slug": slug})
+    if not existing:
         raise HTTPException(404, "Produit introuvable")
+    # Mise à jour PARTIELLE : uniquement les champs réellement fournis (jamais d'écrasement).
+    data = inp.model_dump(exclude_unset=True)
+    data.pop("slug", None)
+    stripe_synced = None
+    if "price" in data and data["price"] is not None:
+        has_file = bool(existing.get("download_storage_path")) and not existing.get("download_is_placeholder")
+        if has_file:
+            lookup = existing.get("lookup_key") or slug.replace("-", "_")
+            name = data.get("name") or existing.get("name")
+            currency = data.get("currency") or existing.get("currency") or "eur"
+            try:
+                sync_stripe_price(lookup, name, data["price"], currency)
+                stripe_synced = True
+            except Exception as e:
+                logger.error(f"Stripe price sync failed for {slug}: {e}")
+                stripe_synced = False
+    if data:
+        await db.products.update_one({"slug": slug}, {"$set": data})
+    p = await db.products.find_one({"slug": slug}, {"_id": 0})
+    p = with_purchasable(p)
+    if stripe_synced is not None:
+        p["stripe_synced"] = stripe_synced
     return p
 
 
@@ -714,9 +774,37 @@ async def upload_product_file(slug: str, file: UploadFile = File(...), admin=Dep
     path = f"{APP_NAME}/files/{slug}/{uuid.uuid4()}.{ext}"
     put_object(path, data, ct)
     await db.products.update_one({"slug": slug}, {"$set": {
-        "download_storage_path": path, "download_filename": filename, "download_is_placeholder": False,
+        "download_storage_path": path, "download_filename": filename,
+        "download_is_placeholder": False, "status": "available",
     }})
+    # Un fichier présent + un prix défini → le produit devient réellement achetable :
+    # on resynchronise le prix Stripe (même mécanisme que le catalogue).
+    prod = await db.products.find_one({"slug": slug}, {"_id": 0})
+    if prod and prod.get("price"):
+        try:
+            sync_stripe_price(prod["lookup_key"], prod["name"], prod["price"], prod.get("currency", "eur"))
+        except Exception as e:
+            logger.error(f"Stripe price sync after upload failed for {slug}: {e}")
     return {"status": "ok", "filename": filename}
+
+
+@api.delete("/admin/products/{slug}/file")
+async def delete_product_file(slug: str, admin=Depends(get_current_admin)):
+    product = await db.products.find_one({"slug": slug})
+    if not product:
+        raise HTTPException(404, "Produit introuvable")
+    path = product.get("download_storage_path")
+    if path:
+        try:
+            delete_object(path)
+        except Exception as e:
+            logger.error(f"Storage delete failed for {slug}: {e}")
+    # Sans fichier réel, le produit repasse automatiquement en « bientôt disponible ».
+    await db.products.update_one({"slug": slug}, {
+        "$set": {"status": "coming_soon"},
+        "$unset": {"download_storage_path": "", "download_filename": "", "download_is_placeholder": ""},
+    })
+    return {"status": "ok"}
 
 
 @api.post("/admin/upload/image")

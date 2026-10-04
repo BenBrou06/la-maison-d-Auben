@@ -897,6 +897,18 @@ async def seed():
     # Coming soon products
     for p in seed_data.COMING_SOON:
         await db.products.update_one({"slug": p["slug"]}, {"$setOnInsert": {**p, "created_at": now_iso()}}, upsert=True)
+    # Backfill non destructif du CONTENU éditorial manquant : répare les fiches
+    # dont la description/les fonctionnalités avaient été vidées. Ne touche JAMAIS
+    # prix / statut / fichier / image (seuls les champs vides sont complétés).
+    content_fields = ["short_description", "description", "audience", "features",
+                      "contents", "compatibility", "faq", "seo", "gallery"]
+    for p in (seed_data.PRODUCTS + seed_data.COMING_SOON):
+        doc = await db.products.find_one({"slug": p["slug"]})
+        if not doc:
+            continue
+        fill = {f: p[f] for f in content_fields if f in p and not doc.get(f)}
+        if fill:
+            await db.products.update_one({"slug": p["slug"]}, {"$set": fill})
     # Articles
     for a in seed_data.ARTICLES:
         await db.articles.update_one({"slug": a["slug"]}, {"$setOnInsert": {**a}}, upsert=True)

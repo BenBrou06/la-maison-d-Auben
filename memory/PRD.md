@@ -47,3 +47,13 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 
 ## Backlog (P1/P2)
 - Version anglaise (i18n). Comptes clients + bibliothèque de commandes. Analytics avec consentement. Split routers backend.
+
+## Admin produits & pages data-driven (2026-06-04) — Preview, NON déployé
+- Fix critique: `PUT /admin/products/{slug}` faisait un écrasement complet (défauts Pydantic) → vidait description/features. Corrigé en mise à jour PARTIELLE (`ProductUpdateInput` + `exclude_unset`). C'était la cause du « Budget mensuel a perdu sa description ».
+- Disponibilité pilotée par le fichier: champ calculé `purchasable` (vrai fichier non-placeholder + prix). Upload → status available + sync prix Stripe; suppression fichier (`DELETE /admin/products/{slug}/file`) → coming_soon.
+- Checkout refuse (409, aucune session Stripe) tout produit sans fichier/prix.
+- Prix éditable depuis /admin → resynchronise le Stripe Price (lookup_key, tax_behavior=inclusive) via `sync_stripe_price`. Le montant payé vient toujours de Stripe (session.amount_total). Le front n'impose jamais le prix (origin_url requis mais ignoré serveur).
+- Pages produit riches et data-driven pour les 6 produits; le contenu riche s'affiche aussi pour les « bientôt disponibles » (sans prix ni bouton d'achat). 5 fiches coming_soon enrichies (seed + `migrate_coming_soon.py`).
+- Admin Produits: prix éditable, upload/remplacement + suppression fichier, indicateur fichier, image, statut par produit.
+- Tests iteration_7: 11/11 scénarios UI OK, aucune régression Stripe/contenu. Backend validé par curl (purchasable, 409, cs_test_, partial update sans écrasement, sync prix 499 inclusif).
+- ⚠️ Non déployé: ces évolutions sont en Preview uniquement. Un déploiement est nécessaire pour les porter en production.

@@ -2,12 +2,12 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { LogOut, ShoppingBag, Mail, MessageSquare, Package, Upload, Image as ImageIcon, CheckCircle2 } from "lucide-react";
+import { LogOut, ShoppingBag, Mail, MessageSquare, Package, Upload, Image as ImageIcon, CheckCircle2, Trash2, Save, FileSpreadsheet } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Seo } from "@/components/Seo";
 import {
   adminMe, adminOrders, adminNewsletter, adminMessages, getProducts,
-  adminUploadProductFile, adminSaveProduct, api,
+  adminUploadProductFile, adminDeleteProductFile, adminUpdateProduct, api,
 } from "@/lib/api";
 import { formatPrice } from "@/lib/i18n";
 
@@ -86,6 +86,7 @@ function Panel({ title, children }) {
 
 function ProductsPanel({ qc }) {
   const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => getProducts() });
+  const refresh = () => qc.invalidateQueries({ queryKey: ["products"] });
 
   const uploadFile = async (slug, file) => {
     const fd = new FormData();
@@ -93,9 +94,17 @@ function ProductsPanel({ qc }) {
     try {
       await adminUploadProductFile(slug, fd);
       toast.success("Fichier téléchargeable mis à jour !");
-      await api.put(`/admin/products/${slug}`, { name: products.find(p => p.slug===slug).name, category_slug: products.find(p=>p.slug===slug).category_slug, download_is_placeholder: false }).catch(()=>{});
-      qc.invalidateQueries({ queryKey: ["products"] });
+      refresh();
     } catch { toast.error("Échec de l'upload."); }
+  };
+
+  const deleteFile = async (slug) => {
+    if (!window.confirm("Supprimer le fichier associé ? Le produit repassera en « Bientôt disponible ».")) return;
+    try {
+      await adminDeleteProductFile(slug);
+      toast.success("Fichier supprimé. Produit indisponible à l'achat.");
+      refresh();
+    } catch { toast.error("Échec de la suppression."); }
   };
 
   const uploadImage = async (slug, file, field) => {
@@ -103,46 +112,103 @@ function ProductsPanel({ qc }) {
     fd.append("file", file);
     try {
       const { data } = await api.post("/admin/upload/image", fd);
-      const prod = products.find((p) => p.slug === slug);
-      await adminSaveProduct(slug, { name: prod.name, category_slug: prod.category_slug, [field]: data.path });
+      await adminUpdateProduct(slug, { [field]: data.path });
       toast.success("Image mise à jour !");
-      qc.invalidateQueries({ queryKey: ["products"] });
+      refresh();
     } catch { toast.error("Échec de l'upload."); }
+  };
+
+  const savePrice = async (slug, raw) => {
+    const value = parseFloat(String(raw).replace(",", "."));
+    if (isNaN(value) || value <= 0) { toast.error("Prix invalide."); return; }
+    try {
+      const res = await adminUpdateProduct(slug, { price: value });
+      if (res.stripe_synced === false) toast.warning("Prix enregistré, mais la synchro Stripe a échoué. Réessayez.");
+      else toast.success("Prix mis à jour !");
+      refresh();
+    } catch { toast.error("Échec de la mise à jour du prix."); }
   };
 
   return (
     <Panel title="Produits">
-      <p className="mb-4 text-sm text-[#626D66]">Uploadez le vrai fichier Excel et les captures d'écran. Les données produit (prix, description) sont centralisées côté serveur.</p>
+      <p className="mb-4 text-sm text-[#626D66]">
+        Gérez chaque produit : prix, fichier Excel et image. Un produit <strong>sans fichier</strong> est automatiquement « Bientôt disponible » et non achetable. Dès qu'un fichier est ajouté, il redevient disponible.
+      </p>
       <div className="space-y-4">
         {products.map((p) => (
-          <div key={p.slug} className="rounded-xl border border-[#E2DDD5] bg-white p-5" data-testid={`admin-product-${p.slug}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-serif text-lg text-[#1E3A2B]">{p.name}</p>
-                <p className="text-sm text-[#626D66]">{p.status === "available" ? formatPrice(p.price, p.currency) : "Bientôt disponible"}</p>
-              </div>
-              {p.download_storage_path && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3B6B4C]">
-                  <CheckCircle2 className="h-4 w-4" /> Fichier {p.download_is_placeholder ? "(placeholder)" : "prêt"}
-                </span>
-              )}
-            </div>
-            {p.status === "available" && (
-              <div className="mt-4 flex flex-wrap gap-3">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#1E3A2B] px-4 py-2.5 text-sm font-medium text-[#FAF8F5] hover:bg-[#3B6B4C]">
-                  <Upload className="h-4 w-4" /> Fichier Excel
-                  <input type="file" accept=".xlsx,.xls,.zip,.pdf,.csv" className="hidden" data-testid={`upload-file-${p.slug}`} onChange={(e) => e.target.files[0] && uploadFile(p.slug, e.target.files[0])} />
-                </label>
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#E2DDD5] px-4 py-2.5 text-sm font-medium text-[#1E3A2B] hover:bg-[#EAF0EC]">
-                  <ImageIcon className="h-4 w-4" /> Image principale
-                  <input type="file" accept="image/*" className="hidden" data-testid={`upload-main-image-${p.slug}`} onChange={(e) => e.target.files[0] && uploadImage(p.slug, e.target.files[0], "main_image")} />
-                </label>
-              </div>
-            )}
-          </div>
+          <ProductRow key={p.slug} p={p} onUploadFile={uploadFile} onDeleteFile={deleteFile} onUploadImage={uploadImage} onSavePrice={savePrice} />
         ))}
       </div>
     </Panel>
+  );
+}
+
+function ProductRow({ p, onUploadFile, onDeleteFile, onUploadImage, onSavePrice }) {
+  const [price, setPrice] = useState(p.price ?? "");
+  useEffect(() => { setPrice(p.price ?? ""); }, [p.price]);
+  const available = !!p.purchasable;
+
+  return (
+    <div className="rounded-xl border border-[#E2DDD5] bg-white p-5" data-testid={`admin-product-${p.slug}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-serif text-lg text-[#1E3A2B]">{p.name}</p>
+          <span
+            data-testid={`admin-product-status-${p.slug}`}
+            className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${available ? "bg-[#EAF0EC] text-[#3B6B4C]" : "bg-[#F6ECD9] text-[#A9772F]"}`}
+          >
+            {available ? "Disponible" : "Bientôt disponible"}
+          </span>
+        </div>
+        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${p.download_storage_path ? "text-[#3B6B4C]" : "text-[#A9772F]"}`} data-testid={`admin-product-file-${p.slug}`}>
+          {p.download_storage_path
+            ? <><CheckCircle2 className="h-4 w-4" /> Fichier {p.download_is_placeholder ? "(placeholder)" : "prêt"}{p.download_filename ? ` · ${p.download_filename}` : ""}</>
+            : <><FileSpreadsheet className="h-4 w-4" /> Aucun fichier</>}
+        </span>
+      </div>
+
+      {/* Prix */}
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <div>
+          <label className="block text-xs font-medium text-[#626D66]">Prix (EUR, TTC)</label>
+          <input
+            type="number" step="0.01" min="0" value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            data-testid={`admin-price-input-${p.slug}`}
+            className="mt-1 w-32 rounded-lg border border-[#E2DDD5] bg-[#FAF8F5] px-3 py-2 text-sm text-[#1E3A2B] focus:border-[#87A987] focus:outline-none"
+            placeholder="7.99"
+          />
+        </div>
+        <button
+          onClick={() => onSavePrice(p.slug, price)}
+          data-testid={`admin-price-save-${p.slug}`}
+          className="inline-flex items-center gap-2 rounded-lg border border-[#E2DDD5] px-4 py-2.5 text-sm font-medium text-[#1E3A2B] hover:bg-[#EAF0EC]"
+        >
+          <Save className="h-4 w-4" /> Enregistrer le prix
+        </button>
+      </div>
+
+      {/* Fichier + image */}
+      <div className="mt-4 flex flex-wrap gap-3">
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#1E3A2B] px-4 py-2.5 text-sm font-medium text-[#FAF8F5] hover:bg-[#3B6B4C]">
+          <Upload className="h-4 w-4" /> {p.download_storage_path ? "Remplacer le fichier" : "Ajouter un fichier"}
+          <input type="file" accept=".xlsx,.xls,.zip,.pdf,.csv" className="hidden" data-testid={`upload-file-${p.slug}`} onChange={(e) => e.target.files[0] && onUploadFile(p.slug, e.target.files[0])} />
+        </label>
+        {p.download_storage_path && (
+          <button
+            onClick={() => onDeleteFile(p.slug)}
+            data-testid={`delete-file-${p.slug}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#E7C9C4] px-4 py-2.5 text-sm font-medium text-[#B4453A] hover:bg-[#F7ECEA]"
+          >
+            <Trash2 className="h-4 w-4" /> Supprimer le fichier
+          </button>
+        )}
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#E2DDD5] px-4 py-2.5 text-sm font-medium text-[#1E3A2B] hover:bg-[#EAF0EC]">
+          <ImageIcon className="h-4 w-4" /> Image principale
+          <input type="file" accept="image/*" className="hidden" data-testid={`upload-main-image-${p.slug}`} onChange={(e) => e.target.files[0] && onUploadImage(p.slug, e.target.files[0], "main_image")} />
+        </label>
+      </div>
+    </div>
   );
 }
 

@@ -37,7 +37,7 @@ export default function ProductDetail() {
   if (isError || !product) return <div className="container-app py-24 text-center text-[#626D66]">Produit introuvable.</div>;
 
   const gallery = product.gallery || [];
-  const coming = product.status === "coming_soon";
+  const coming = !product.purchasable;
   const galleryUrl = (g) => (g.url ? g.url : g.storage_path ? mediaUrl(g.storage_path) : "");
 
   return (
@@ -102,8 +102,8 @@ export default function ProductDetail() {
         </Reveal>
       </section>
 
-      {!coming && (
-        <>
+      {/* CONTENU RICHE — affiché aussi pour les produits « bientôt disponibles » */}
+      <>
           {/* PRÉSENTATION */}
           <section className="bg-[#F2EDE4] py-14 sm:py-20">
             <div className="container-app grid gap-10 lg:grid-cols-[1.2fr_1fr] lg:items-center">
@@ -235,21 +235,36 @@ export default function ProductDetail() {
               <div className="relative overflow-hidden rounded-3xl bg-[#1E3A2B] p-10 text-center grain sm:p-16">
                 <div className="relative z-10 mx-auto max-w-xl">
                   <h2 className="font-serif text-3xl font-semibold text-[#FAF8F5] sm:text-4xl">{product.name}</h2>
-                  <p className="mt-4 font-serif text-2xl text-[#D4A359]">{formatPrice(product.price, product.currency)}</p>
-                  <button
-                    onClick={buy}
-                    disabled={buying}
-                    data-testid="buy-now-btn-final"
-                    className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-[#D4A359] px-8 py-4 text-lg font-medium text-[#1E3A2B] transition-all hover:brightness-105 active:scale-[0.99] disabled:opacity-70"
-                  >
-                    {buying ? t("cta.buy_processing") : <>{t("cta.buy")} <ArrowRight className="h-5 w-5" /></>}
-                  </button>
+                  {coming ? (
+                    <>
+                      <p className="mt-4 font-serif text-2xl text-[#D4A359]">Bientôt disponible</p>
+                      <p className="mt-3 text-[#CBD9CE]">Inscrivez-vous à la newsletter pour être prévenu·e dès sa sortie.</p>
+                      <Link
+                        to="/"
+                        data-testid="coming-soon-cta-final"
+                        className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-[#D4A359] px-8 py-4 text-lg font-medium text-[#1E3A2B] transition-all hover:brightness-105 active:scale-[0.99]"
+                      >
+                        Être prévenu·e <ArrowRight className="h-5 w-5" />
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-4 font-serif text-2xl text-[#D4A359]">{formatPrice(product.price, product.currency)}</p>
+                      <button
+                        onClick={buy}
+                        disabled={buying}
+                        data-testid="buy-now-btn-final"
+                        className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-[#D4A359] px-8 py-4 text-lg font-medium text-[#1E3A2B] transition-all hover:brightness-105 active:scale-[0.99] disabled:opacity-70"
+                      >
+                        {buying ? t("cta.buy_processing") : <>{t("cta.buy")} <ArrowRight className="h-5 w-5" /></>}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </Reveal>
           </section>
-        </>
-      )}
+      </>
 
       {/* LIGHTBOX */}
       {lightbox !== null && gallery[lightbox] && (

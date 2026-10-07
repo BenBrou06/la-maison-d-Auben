@@ -48,7 +48,14 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 ## Backlog (P1/P2)
 - Version anglaise (i18n). Comptes clients + bibliothèque de commandes. Analytics avec consentement. Split routers backend.
 
-## Admin produits & pages data-driven (2026-06-04) — Preview, NON déployé
+## Onglet admin « Contenu » — éditeur de fiches produit (2026-06-04) — redéployé
+- Nouvel onglet `Contenu` (Produits | **Contenu** | Commandes | Newsletter | Messages) : édition data-driven du contenu éditorial de CHAQUE produit (titre, accroche, badge, description, présentation/audience, fonctionnalités, galerie d'images, « ce que vous recevez », compatibilité, FAQ, SEO, image principale).
+- 100% frontend : réutilise `PUT /api/admin/products/{slug}` (exclude_unset, partiel) + `POST /api/admin/upload/image`. **Aucune nouvelle route backend. Aucun changement Stripe/checkout/webhook/commandes/téléchargements.**
+- Fichiers : `frontend/src/pages/admin/ContentPanel.jsx` (nouveau), `frontend/src/pages/admin/AdminDashboard.jsx` (TABS + rendu), `frontend/src/lib/api.js` (adminUploadImage).
+- L'édition de contenu n'affecte jamais prix / disponibilité / fichier (gérés dans l'onglet Produits). Galerie : upload/remplacement/suppression/réordonnancement, rendu via `storage_path`→`mediaUrl` sur la page publique (fallback « Capture à venir »).
+- Bouton « Voir la page » → /boutique/{slug}. Aperçu immédiat après enregistrement.
+- Tests iteration_8 : **14/14 scénarios UI OK**, 0 bug. Sécurité : PUT admin sans token → 401 ; upload non-image → 400. Non-régression : budget-mensuel 7,99 € + fichier + checkout cs_test_ intacts ; budget-couple reste « Bientôt disponible » non achetable. budget-couple restauré à l'état seed après tests.
+- Inclut aussi le correctif backfill (pages produit vides en prod) de la vague précédente.
 - Fix critique: `PUT /admin/products/{slug}` faisait un écrasement complet (défauts Pydantic) → vidait description/features. Corrigé en mise à jour PARTIELLE (`ProductUpdateInput` + `exclude_unset`). C'était la cause du « Budget mensuel a perdu sa description ».
 - Disponibilité pilotée par le fichier: champ calculé `purchasable` (vrai fichier non-placeholder + prix). Upload → status available + sync prix Stripe; suppression fichier (`DELETE /admin/products/{slug}/file`) → coming_soon.
 - Checkout refuse (409, aucune session Stripe) tout produit sans fichier/prix.

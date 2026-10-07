@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { LogOut, ShoppingBag, Mail, MessageSquare, Package, Upload, Image as ImageIcon, CheckCircle2, Trash2, Save, FileSpreadsheet } from "lucide-react";
+import { LogOut, ShoppingBag, Mail, MessageSquare, Package, Upload, Image as ImageIcon, CheckCircle2, Trash2, Save, FileSpreadsheet, FileText } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Seo } from "@/components/Seo";
+import ContentPanel from "@/pages/admin/ContentPanel";
 import {
   adminMe, adminOrders, adminNewsletter, adminMessages, getProducts,
   adminUploadProductFile, adminDeleteProductFile, adminUpdateProduct, api,
@@ -13,6 +14,7 @@ import { formatPrice } from "@/lib/i18n";
 
 const TABS = [
   { key: "products", label: "Produits", icon: Package },
+  { key: "content", label: "Contenu", icon: FileText },
   { key: "orders", label: "Commandes", icon: ShoppingBag },
   { key: "newsletter", label: "Newsletter", icon: Mail },
   { key: "messages", label: "Messages", icon: MessageSquare },
@@ -65,6 +67,7 @@ export default function AdminDashboard() {
 
           <div className="mt-8">
             {tab === "products" && <ProductsPanel qc={qc} />}
+            {tab === "content" && <ContentPanel />}
             {tab === "orders" && <OrdersPanel />}
             {tab === "newsletter" && <NewsletterPanel />}
             {tab === "messages" && <MessagesPanel />}

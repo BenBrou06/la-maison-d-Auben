@@ -46,3 +46,8 @@ export const adminDeleteProductFile = (slug) =>
   api.delete(`/admin/products/${slug}/file`).then((r) => r.data);
 export const adminUpdateProduct = (slug, payload) =>
   api.put(`/admin/products/${slug}`, payload).then((r) => r.data);
+export const adminUploadImage = (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api.post("/admin/upload/image", fd).then((r) => r.data);
+};

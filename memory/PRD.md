@@ -48,7 +48,9 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 ## Backlog (P1/P2)
 - Version anglaise (i18n). Comptes clients + bibliothèque de commandes. Analytics avec consentement. Split routers backend.
 
-## Onglet admin « Contenu » — éditeur de fiches produit (2026-06-04) — redéployé
+## Lightbox galerie produit — agrandissement + ratio cohérent (2026-06-04) — Preview, NON déployé
+- `frontend/src/pages/ProductDetail.jsx` (lightbox uniquement) : ratio aligné sur la vignette (**16:11**, avant 16:10), `object-contain` (avant `object-cover` via Screenshot) → image entière visible sans découpe ni déformation. Conteneur agrandi de `max-w-3xl` à `min(90vw, calc(85vh*16/11))` → image ~1335×918 (desktop), centrée, responsive (≤90vw, aucun débordement mobile). Légende + navigation (←/→) + fermeture conservées. Vignettes et composant Screenshot inchangés.
+- Testé (desktop) : image nettement plus grande, ratio 16:11, coins/bords visibles, nav/close OK. Mobile validé par construction CSS (outil screenshot force 1920, mesure réelle impossible).
 - Nouvel onglet `Contenu` (Produits | **Contenu** | Commandes | Newsletter | Messages) : édition data-driven du contenu éditorial de CHAQUE produit (titre, accroche, badge, description, présentation/audience, fonctionnalités, galerie d'images, « ce que vous recevez », compatibilité, FAQ, SEO, image principale).
 - 100% frontend : réutilise `PUT /api/admin/products/{slug}` (exclude_unset, partiel) + `POST /api/admin/upload/image`. **Aucune nouvelle route backend. Aucun changement Stripe/checkout/webhook/commandes/téléchargements.**
 - Fichiers : `frontend/src/pages/admin/ContentPanel.jsx` (nouveau), `frontend/src/pages/admin/AdminDashboard.jsx` (TABS + rendu), `frontend/src/lib/api.js` (adminUploadImage).

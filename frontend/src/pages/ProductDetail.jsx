@@ -271,9 +271,25 @@ export default function ProductDetail() {
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#1E3A2B]/80 p-4 backdrop-blur-sm" onClick={() => setLightbox(null)} data-testid="lightbox">
           <button className="absolute right-5 top-5 text-white/80 hover:text-white" onClick={() => setLightbox(null)} aria-label="Fermer"><X className="h-8 w-8" /></button>
           <button className="absolute left-4 text-white/80 hover:text-white" onClick={(e) => { e.stopPropagation(); setLightbox((lightbox - 1 + gallery.length) % gallery.length); }} aria-label="Précédent"><ChevronLeft className="h-10 w-10" /></button>
-          <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
-            <Screenshot url={galleryUrl(gallery[lightbox])} caption={gallery[lightbox].caption} ratio="aspect-[16/10]" />
-            <p className="mt-4 text-center font-serif text-lg text-white">{gallery[lightbox].caption}</p>
+          <div
+            className="flex flex-col items-center"
+            style={{ width: "min(90vw, calc(85vh * 16 / 11))" }}
+            onClick={(e) => e.stopPropagation()}
+            data-testid="lightbox-content"
+          >
+            {galleryUrl(gallery[lightbox]) ? (
+              <img
+                src={galleryUrl(gallery[lightbox])}
+                alt={gallery[lightbox].caption || "Capture du produit"}
+                data-testid="lightbox-image"
+                className="aspect-[16/11] w-full rounded-xl border border-white/15 bg-white object-contain shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]"
+              />
+            ) : (
+              <Screenshot caption={gallery[lightbox].caption} ratio="aspect-[16/11]" className="w-full" />
+            )}
+            {gallery[lightbox].caption && (
+              <p className="mt-4 text-center font-serif text-lg text-white">{gallery[lightbox].caption}</p>
+            )}
           </div>
           <button className="absolute right-4 text-white/80 hover:text-white" onClick={(e) => { e.stopPropagation(); setLightbox((lightbox + 1) % gallery.length); }} aria-label="Suivant"><ChevronRight className="h-10 w-10" /></button>
         </div>

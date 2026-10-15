@@ -77,3 +77,8 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - A11y : skip link, lightbox role=dialog + Échap, labels newsletter/contact.
 - Tests : backend/tests/test_compliance_rgpd.py 15/15 ; iteration_9.json frontend OK (souci images tierces corrigé ensuite, vérifié par capture).
 - Points ouverts : adresse/téléphone hébergeur ; finalité cookies __emg ; Emergent déclaré « pas encore conforme RGPD » par son support ; Stripe managed_payments (vendeur de référence ?) à vérifier ; purge automatique des données non implémentée ; X-Forwarded-For contournable pour le rate limit.
+
+## 2026-06 — Fix décalage prix site/Stripe (Preview, NON déployé)
+- Cause : ensure_stripe_catalog() (exécuté à chaque démarrage/déploiement) resynchronisait Stripe sur le prix codé en dur du seed (7,99) au lieu du prix en base modifié via l'admin (6,99).
+- Correctif : ensure_stripe_catalog async lit les produits en base ; create_checkout vérifie que le Price Stripe == prix en base et resynchronise sinon (503 si impossible). Taxes inclusive, webhooks, e-mails, téléchargements, case de renonciation inchangés.
+- Preview : prix budget-mensuel = 6,99 ; sessions test amount_total=699 vérifiées (après redémarrage et en cas de désynchronisation forcée). Tests 15/15.

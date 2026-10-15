@@ -104,7 +104,7 @@ class TestCheckoutWaiver:
         assert wc["accepted"] is True and wc["text_version"] == WVER
         assert wc["accepted_at"] and wc["text"] and wc["ip"]
         assert wc["user_agent"] == "QA-Agent/1.0"
-        assert tx["amount"] == 7.99
+        assert tx["amount"] == s.get(f"{API}/products/budget-mensuel").json()["price"]
         sess = stripe.checkout.Session.retrieve(d["session_id"])
         assert sess.metadata["withdrawal_consent_version"] == WVER
         assert "evil.example.com" not in sess.success_url
@@ -174,4 +174,4 @@ class TestSeoFiles:
 
     def test_product_price_unchanged(self, s):
         p = s.get(f"{API}/products/budget-mensuel").json()
-        assert p["price"] == 7.99
+        assert p["price"] == 6.99

@@ -405,12 +405,12 @@ def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = 
         )
 
 
-def ensure_stripe_catalog():
+async def ensure_stripe_catalog():
+    # Source de vérité = prix en base (édité via l'admin), jamais le prix du seed.
     try:
-        for entry in seed_data.PRODUCTS:
-            if entry.get("status") != "available" or not entry.get("price"):
-                continue
-            sync_stripe_price(entry["lookup_key"], entry["name"], entry["price"], entry["currency"])
+        async for p in db.products.find({"price": {"$gt": 0}, "lookup_key": {"$nin": [None, ""]},
+                                         "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
+            sync_stripe_price(p["lookup_key"], p["name"], p["price"], p.get("currency", "eur"))
         logger.info("Stripe catalog ensured")
     except Exception as e:
         logger.error(f"Stripe catalog setup failed: {e}")
@@ -431,9 +431,15 @@ async def create_checkout(request: Request, req: CheckoutInput):
         "text_version": WITHDRAWAL_CONSENT_VERSION, "text": WITHDRAWAL_CONSENT_TEXT,
         "ip": _client_ip(request), "user_agent": request.headers.get("user-agent", "")[:300],
     }
+    expected = int(round(product["price"] * 100))
+    currency = product.get("currency", "eur")
     prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
-    if not prices:
-        raise HTTPException(500, f"Prix introuvable : {req.lookup_key}")
+    if not prices or prices[0].unit_amount != expected or prices[0].currency != currency:
+        # Le prix Stripe doit toujours être celui affiché sur le site (prix en base).
+        sync_stripe_price(req.lookup_key, product["name"], product["price"], currency)
+        prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
+    if not prices or prices[0].unit_amount != expected:
+        raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
     price = prices[0]
     # SÉCURITÉ : ne jamais utiliser l'origin_url fourni par le client pour des URLs sensibles.
     base = PUBLIC_BASE_URL
@@ -1000,7 +1006,7 @@ async def startup():
     await seed()
     for old, new in seed_data.LEGACY_COVER_IMAGES.items():
         await db.articles.update_many({"cover_image": old}, {"$set": {"cover_image": new}})
-    ensure_stripe_catalog()
+    await ensure_stripe_catalog()
     logger.info("Startup complete")
 
 

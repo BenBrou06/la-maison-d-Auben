@@ -19,7 +19,7 @@ export const Seo = ({ title, description, image, path, noindex = false }) => {
     set('meta[name="description"]', "content", description);
     set('meta[property="og:title"]', "content", title);
     set('meta[property="og:description"]', "content", description);
-    if (image) set('meta[property="og:image"]', "content", image);
+    if (image) set('meta[property="og:image"]', "content", image.startsWith("/") ? SITE_URL + image : image);
 
     // Pages sensibles (téléchargement/confirmation) : ne pas indexer.
     let robots = document.head.querySelector('meta[name="robots"]');

@@ -998,6 +998,8 @@ async def startup():
     await db.orders.create_index("session_id", unique=True)
     await db.payment_transactions.create_index("session_id")
     await seed()
+    for old, new in seed_data.LEGACY_COVER_IMAGES.items():
+        await db.articles.update_many({"cover_image": old}, {"$set": {"cover_image": new}})
     ensure_stripe_catalog()
     logger.info("Startup complete")
 

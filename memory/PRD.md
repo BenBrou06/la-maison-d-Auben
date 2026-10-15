@@ -66,3 +66,14 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Admin Produits: prix éditable, upload/remplacement + suppression fichier, indicateur fichier, image, statut par produit.
 - Tests iteration_7: 11/11 scénarios UI OK, aucune régression Stripe/contenu. Backend validé par curl (purchasable, 409, cs_test_, partial update sans écrasement, sync prix 499 inclusif).
 - ⚠️ Non déployé: ces évolutions sont en Preview uniquement. Un déploiement est nécessaire pour les porter en production.
+
+## 2026-06 — Mission conformité (Preview uniquement, NON déployée)
+- PostHog supprimé ; emergent-main.js chargé seulement sur *.preview.emergentagent.com ; polices + images auto-hébergées (/fonts, /images) ; migration au démarrage des couvertures d'articles distantes → locales (seed_data.LEGACY_COVER_IMAGES).
+- Bandeau cookies supprimé (aucun stockage soumis à consentement côté visiteur). Cookies hébergeur __emg_vid (12 mois) / __emg_sid (30 min) déposés par l'infra Emergent : finalité NON confirmée (support : pas de doc) → à vérifier via support@emergent.sh.
+- Renonciation rétractation : case obligatoire (WithdrawalConsent.jsx), serveur exige withdrawal_waiver=true + version "retractation-v1-2026-06" (400 sinon) ; preuve (date, version, texte, IP, UA) dans payment_transactions.withdrawal_consent → copiée dans orders ; métadonnées Stripe ; rappel dans l'e-mail de confirmation.
+- Newsletter : consent StrictBool obligatoire, consent_at/version/texte/status, unsubscribe_token (backfill au démarrage), POST /api/newsletter/unsubscribe, page /newsletter/desinscription, admin : statut + lien.
+- Legal.jsx réécrit : CM2C, garantie légale de conformité, suppression clause « aucun remboursement », confidentialité basée sur traitements réels (transferts US/Inde déclarés), cookies réels, hébergeur Emergent Labs Inc.
+- SEO : canonical fixe https://la-maison-dauben.com (lib/site.js), robots/sitemap prod, noindex admin/paiement/désinscription.
+- A11y : skip link, lightbox role=dialog + Échap, labels newsletter/contact.
+- Tests : backend/tests/test_compliance_rgpd.py 15/15 ; iteration_9.json frontend OK (souci images tierces corrigé ensuite, vérifié par capture).
+- Points ouverts : adresse/téléphone hébergeur ; finalité cookies __emg ; Emergent déclaré « pas encore conforme RGPD » par son support ; Stripe managed_payments (vendeur de référence ?) à vérifier ; purge automatique des données non implémentée ; X-Forwarded-For contournable pour le rate limit.

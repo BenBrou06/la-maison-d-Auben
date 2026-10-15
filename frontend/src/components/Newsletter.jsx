@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Send, Check } from "lucide-react";
 import { toast } from "sonner";
 import { subscribeNewsletter } from "@/lib/api";
+import { Link } from "react-router-dom";
 import { t } from "@/lib/i18n";
 
 export const Newsletter = ({ title, text, compact = false }) => {
@@ -45,8 +46,11 @@ export const Newsletter = ({ title, text, compact = false }) => {
       ) : (
         <form onSubmit={submit} className={`relative z-10 mx-auto mt-7 ${compact ? "" : "max-w-md"}`} data-testid="newsletter-form">
           <div className="flex flex-col gap-3 sm:flex-row">
+            <label htmlFor={compact ? "newsletter-email-compact" : "newsletter-email"} className="sr-only">Adresse e-mail</label>
             <input
+              id={compact ? "newsletter-email-compact" : "newsletter-email"}
               type="email"
+              autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -71,7 +75,11 @@ export const Newsletter = ({ title, text, compact = false }) => {
               data-testid="newsletter-consent-checkbox"
               className="mt-0.5 h-4 w-4 rounded border-[#87A987] accent-[#3B6B4C]"
             />
-            <span>{t("newsletter.consent")}</span>
+            <span>
+              J'accepte de recevoir la newsletter et j'ai lu la{" "}
+              <Link to="/confidentialite" className="underline">politique de confidentialité</Link>.
+              Désinscription possible à tout moment.
+            </span>
           </label>
         </form>
       )}

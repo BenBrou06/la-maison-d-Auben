@@ -50,11 +50,11 @@ export default function Contact() {
           ) : (
             <form onSubmit={submit} className="card-soft space-y-4 p-6 sm:p-8" data-testid="contact-form">
               <div className="grid gap-4 sm:grid-cols-2">
-                <input required placeholder="Votre nom" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} data-testid="contact-name" />
-                <input required type="email" placeholder="Votre e-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} data-testid="contact-email" />
+                <input required placeholder="Votre nom" aria-label="Votre nom" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} data-testid="contact-name" />
+                <input required type="email" placeholder="Votre e-mail" aria-label="Votre e-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={field} data-testid="contact-email" />
               </div>
-              <input placeholder="Sujet" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className={field} data-testid="contact-subject" />
-              <textarea required rows={5} placeholder="Votre message" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className={field} data-testid="contact-message" />
+              <input placeholder="Sujet" aria-label="Sujet" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className={field} data-testid="contact-subject" />
+              <textarea required rows={5} placeholder="Votre message" aria-label="Votre message" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className={field} data-testid="contact-message" />
               <button type="submit" disabled={loading} data-testid="contact-submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-6 py-3.5 font-medium text-[#FAF8F5] transition-all hover:bg-[#3B6B4C] disabled:opacity-70">
                 {loading ? "Envoi…" : <>Envoyer le message <Send className="h-4 w-4" /></>}
               </button>

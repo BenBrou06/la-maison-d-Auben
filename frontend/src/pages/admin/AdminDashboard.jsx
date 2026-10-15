@@ -36,7 +36,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <Seo title="Tableau de bord — Admin" description="Administration" path="/admin" />
+      <Seo title="Tableau de bord — Admin" description="Administration" path="/admin" noindex />
       <div className="min-h-screen bg-[#F2EDE4]">
         <header className="border-b border-[#E2DDD5] bg-[#FAF8F5]">
           <div className="container-app flex h-[70px] items-center justify-between">
@@ -245,18 +245,28 @@ function OrdersPanel() {
 
 function NewsletterPanel() {
   const { data: subs = [] } = useQuery({ queryKey: ["admin-newsletter"], queryFn: adminNewsletter });
+  const active = subs.filter((s) => s.status !== "unsubscribed");
+  const copy = (url) => navigator.clipboard?.writeText(url);
   return (
-    <Panel title={`Abonnés newsletter (${subs.length})`}>
+    <Panel title={`Abonnés newsletter (${active.length} actifs / ${subs.length})`}>
       {subs.length === 0 ? <p className="text-sm text-[#626D66]">Aucun abonné pour le moment.</p> : (
         <ul className="space-y-2" data-testid="admin-newsletter-list">
           {subs.map((s) => (
-            <li key={s.id} className="flex items-center justify-between rounded-lg bg-[#FAF8F5] px-4 py-2.5 text-sm">
-              <span className="text-[#2C332E]">{s.email}</span>
-              <span className="text-xs text-[#626D66]">{new Date(s.created_at).toLocaleDateString("fr-FR")}</span>
+            <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#FAF8F5] px-4 py-2.5 text-sm" data-testid={`admin-newsletter-item-${s.id}`}>
+              <span className={s.status === "unsubscribed" ? "text-[#626D66] line-through" : "text-[#2C332E]"}>{s.email}</span>
+              <span className="flex items-center gap-3 text-xs text-[#626D66]">
+                {s.status === "unsubscribed" ? "Désinscrit" : "Inscrit"} · {new Date(s.consent_at || s.created_at).toLocaleDateString("fr-FR")}
+                {s.unsubscribe_url && s.status !== "unsubscribed" && (
+                  <button onClick={() => copy(s.unsubscribe_url)} className="underline hover:text-[#1E3A2B]" data-testid={`admin-newsletter-copy-unsub-${s.id}`}>
+                    Copier le lien de désinscription
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>
       )}
+      <p className="mt-4 text-xs text-[#626D66]">Chaque envoi de newsletter doit contenir le lien de désinscription propre à l'abonné.</p>
     </Panel>
   );
 }

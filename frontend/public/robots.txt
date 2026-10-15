@@ -1,6 +1,8 @@
 User-agent: *
 Allow: /
 Disallow: /admin
-Disallow: /admin/login
+Disallow: /paiement/
+Disallow: /telechargement/
+Disallow: /newsletter/
 
-Sitemap: https://auben-preview-shop.preview.emergentagent.com/sitemap.xml
+Sitemap: https://la-maison-dauben.com/sitemap.xml

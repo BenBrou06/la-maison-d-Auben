@@ -106,8 +106,17 @@ async def send_email(*, to: str, subject: str, html: str, reply_to: str = None):
         return None
 
 
-def order_confirmation_html(*, product_name: str, amount: float, currency: str, download_url: str, order_id: str) -> str:
+def order_confirmation_html(*, product_name: str, amount: float, currency: str, download_url: str, order_id: str,
+                            withdrawal_consent: dict = None) -> str:
     money = f"{amount:.2f} {currency.upper()}".replace(".", ",")
+    waiver = ""
+    if withdrawal_consent:
+        waiver = (
+            '<p style="color:#626D66;font-size:12px;line-height:1.6;border-top:1px solid #E2DDD5;padding-top:14px">'
+            f'Confirmation : lors de votre commande ({escape(withdrawal_consent.get("accepted_at", ""))}), vous avez coché la mention suivante : '
+            f'« {escape(withdrawal_consent.get("text", ""))} » (version {escape(withdrawal_consent.get("text_version", ""))}). '
+            'Vos garanties légales de conformité restent applicables.</p>'
+        )
     return (
         '<table role="presentation" width="100%" style="background:#FAF8F5;padding:32px 0;font-family:Arial,Helvetica,sans-serif">'
         '<tr><td align="center">'
@@ -128,6 +137,7 @@ def order_confirmation_html(*, product_name: str, amount: float, currency: str, 
         'Télécharger mon produit</a></p>'
         '<p style="color:#626D66;font-size:13px;line-height:1.6">Ce lien de téléchargement est personnel et sécurisé. '
         'Conservez cet e-mail : il vous permet de récupérer votre fichier à tout moment.</p>'
+        f'{waiver}'
         '<p style="font-size:12px;color:#888;margin-top:24px">Envoyé par La Maison d\'Auben. '
         'Nous ne vous demanderons jamais votre mot de passe ou vos informations bancaires par e-mail.</p>'
         '</td></tr></table></td></tr></table>'

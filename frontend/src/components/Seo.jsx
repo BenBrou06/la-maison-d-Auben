@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { SITE_URL } from "@/lib/site";
 
 // SEO léger sans dépendance : titre, meta description, canonical, OG.
 export const Seo = ({ title, description, image, path, noindex = false }) => {
@@ -39,7 +40,7 @@ export const Seo = ({ title, description, image, path, noindex = false }) => {
       canonical.setAttribute("rel", "canonical");
       document.head.appendChild(canonical);
     }
-    canonical.setAttribute("href", window.location.origin + (path || window.location.pathname));
+    canonical.setAttribute("href", SITE_URL + (path || window.location.pathname));
   }, [title, description, image, path, noindex]);
   return null;
 };

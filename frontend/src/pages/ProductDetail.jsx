@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -12,20 +12,34 @@ import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
 import { formatPrice, t } from "@/lib/i18n";
+import { WITHDRAWAL_CONSENT_VERSION } from "@/lib/site";
+import { WithdrawalConsent } from "@/components/WithdrawalConsent";
 
 export default function ProductDetail() {
   const { slug } = useParams();
   const [buying, setBuying] = useState(false);
   const [lightbox, setLightbox] = useState(null); // index
+  const [waiver, setWaiver] = useState(false);
+
+  useEffect(() => {
+    if (lightbox === null) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setLightbox(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   const { data: product, isLoading, isError } = useQuery({ queryKey: ["product", slug], queryFn: () => getProduct(slug) });
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const category = categories.find((c) => c.slug === product?.category_slug);
 
   const buy = async () => {
+    if (!waiver) return;
     setBuying(true);
     try {
-      const { checkout_url } = await createCheckout({ lookup_key: product.lookup_key, origin_url: window.location.origin });
+      const { checkout_url } = await createCheckout({
+        lookup_key: product.lookup_key, origin_url: window.location.origin,
+        withdrawal_waiver: true, withdrawal_consent_version: WITHDRAWAL_CONSENT_VERSION,
+      });
       window.location.href = checkout_url;
     } catch (e) {
       toast.error("Le paiement n'a pas pu démarrer. Réessayez.");
@@ -72,11 +86,13 @@ export default function ProductDetail() {
                 <span className="font-serif text-4xl font-bold text-[#1E3A2B]">{formatPrice(product.price, product.currency)}</span>
                 <span className="text-sm text-[#87A987]">Paiement unique · Téléchargement immédiat</span>
               </div>
+              <WithdrawalConsent id="withdrawal-consent" checked={waiver} onChange={setWaiver} />
               <button
                 onClick={buy}
-                disabled={buying}
+                disabled={buying || !waiver}
+                aria-describedby="withdrawal-consent"
                 data-testid="buy-now-btn"
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-8 py-4 text-lg font-medium text-[#FAF8F5] transition-all duration-200 hover:bg-[#3B6B4C] active:scale-[0.99] disabled:opacity-70 sm:w-auto"
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-8 py-4 text-lg font-medium text-[#FAF8F5] transition-all duration-200 hover:bg-[#3B6B4C] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {buying ? t("cta.buy_processing") : <>{t("cta.buy")} <ArrowRight className="h-5 w-5" /></>}
               </button>
@@ -85,13 +101,6 @@ export default function ProductDetail() {
                 <span className="inline-flex items-center gap-1.5"><Download className="h-3.5 w-3.5 text-[#3B6B4C]" /> Accès immédiat</span>
                 <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-[#3B6B4C]" /> Lien de téléchargement protégé</span>
               </div>
-              <p className="mt-4 max-w-md text-xs leading-relaxed text-[#87A987]" data-testid="legal-consent-note">
-                En finalisant votre achat, vous acceptez nos{" "}
-                <Link to="/cgv" className="underline hover:text-[#3B6B4C]">conditions générales de vente</Link>{" "}
-                et demandez expressément la fourniture immédiate du fichier numérique. Vous reconnaissez
-                renoncer de ce fait à votre droit de rétractation dès le début du téléchargement
-                (article L.221-28 du Code de la consommation).
-              </p>
             </>
           ) : (
             <div className="mt-8 rounded-2xl bg-[#F2EDE4] p-6">
@@ -115,7 +124,7 @@ export default function ProductDetail() {
               </Reveal>
               <Reveal delay={0.1}>
                 <img
-                  src="https://images.unsplash.com/photo-1649119162006-304b172c12d8?crop=entropy&cs=srgb&fm=jpg&q=85&w=900"
+                  src="/images/product-desk.jpg"
                   alt="Espace de travail organisé"
                   loading="lazy"
                   className="aspect-[4/3] w-full rounded-2xl object-cover shadow-[0_18px_40px_-18px_rgba(30,58,43,0.3)]"
@@ -250,11 +259,15 @@ export default function ProductDetail() {
                   ) : (
                     <>
                       <p className="mt-4 font-serif text-2xl text-[#D4A359]">{formatPrice(product.price, product.currency)}</p>
+                      <div className="flex justify-center">
+                        <WithdrawalConsent id="withdrawal-consent-final" checked={waiver} onChange={setWaiver} dark />
+                      </div>
                       <button
                         onClick={buy}
-                        disabled={buying}
+                        disabled={buying || !waiver}
+                        aria-describedby="withdrawal-consent-final"
                         data-testid="buy-now-btn-final"
-                        className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-[#D4A359] px-8 py-4 text-lg font-medium text-[#1E3A2B] transition-all hover:brightness-105 active:scale-[0.99] disabled:opacity-70"
+                        className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-[#D4A359] px-8 py-4 text-lg font-medium text-[#1E3A2B] transition-all hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {buying ? t("cta.buy_processing") : <>{t("cta.buy")} <ArrowRight className="h-5 w-5" /></>}
                       </button>
@@ -268,8 +281,8 @@ export default function ProductDetail() {
 
       {/* LIGHTBOX */}
       {lightbox !== null && gallery[lightbox] && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#1E3A2B]/80 p-4 backdrop-blur-sm" onClick={() => setLightbox(null)} data-testid="lightbox">
-          <button className="absolute right-5 top-5 text-white/80 hover:text-white" onClick={() => setLightbox(null)} aria-label="Fermer"><X className="h-8 w-8" /></button>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#1E3A2B]/80 p-4 backdrop-blur-sm" onClick={() => setLightbox(null)} role="dialog" aria-modal="true" aria-label={gallery[lightbox].caption || "Aperçu de la galerie"} data-testid="lightbox">
+          <button autoFocus className="absolute right-5 top-5 text-white/80 hover:text-white" onClick={() => setLightbox(null)} aria-label="Fermer" data-testid="lightbox-close-btn"><X className="h-8 w-8" /></button>
           <button className="absolute left-4 text-white/80 hover:text-white" onClick={(e) => { e.stopPropagation(); setLightbox((lightbox - 1 + gallery.length) % gallery.length); }} aria-label="Précédent"><ChevronLeft className="h-10 w-10" /></button>
           <div
             className="flex flex-col items-center"

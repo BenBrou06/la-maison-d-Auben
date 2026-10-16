@@ -89,3 +89,9 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - NEWSLETTER_DRY_RUN="true" dans backend/.env Preview → statut "simulated", aucun envoi. En production, absent = envois réels.
 - Frontend : pages/admin/NewsletterPanel.jsx + pages/admin/newsletter/*.
 - Tests : backend/tests/test_newsletter_admin.py 23/23 (lancer avec -n 0), iteration_10.json UI OK ; bug "le test réinitialise la sélection" corrigé, date FR dans le pied.
+
+## 2026-06 — Newsletter : sélection explicite + nettoyage données de test (Preview, NON déployé)
+- Suppression du marquage « Adresse de test » (UI, PATCH, règle d'exclusion) et du mode all_eligible. Sélection explicite par case « Destinataire » + « Tout sélectionner / Tout désélectionner » ; serveur ne prend que recipient_ids éligibles (consentement prouvé, non désinscrit, non retiré).
+- backend/cleanup_test_data.py (simulation par défaut, --apply) : supprime newsletter / messages (e-mail ou nom contenant « test ») et commandes dont l'e-mail contient « test » ET session cs_test_ (+ transactions de test associées) ; commandes non TEST signalées, jamais supprimées.
+- Preview nettoyé : 60 abonnés, 35 messages, 4 commandes Stripe TEST + 4 transactions supprimés ; 2 commandes conservées ; 6 transactions cs_live_ (initiated/pending, sans commande) conservées.
+- Tests : 37/37 backend (-n 0), iteration_11.json UI OK ; correctif retour à la ligne des e-mails sur mobile.

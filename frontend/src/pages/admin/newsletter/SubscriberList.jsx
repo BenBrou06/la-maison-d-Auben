@@ -23,7 +23,7 @@ function SubscriberRow({ s, checked, onToggle, onRemove }) {
   return (
     <li className="rounded-lg bg-[#FAF8F5] px-4 py-3 text-sm" data-testid={`admin-newsletter-item-${s.id}`}>
       <div className="flex flex-wrap items-center gap-3">
-        <span className={`min-w-0 flex-1 break-all ${s.eligible ? "text-[#2C332E]" : "text-[#626D66]"}`}>{s.email}</span>
+        <span className={`w-full min-w-0 [overflow-wrap:anywhere] sm:w-auto sm:flex-1 ${s.eligible ? "text-[#2C332E]" : "text-[#626D66]"}`}>{s.email}</span>
         {statusPill(s)}{consentPill(s)}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#626D66]">

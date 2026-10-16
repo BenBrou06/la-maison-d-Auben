@@ -21,6 +21,7 @@ export const getArticles = (params) => api.get("/articles", { params }).then((r)
 export const getArticle = (slug) => api.get(`/articles/${slug}`).then((r) => r.data);
 export const getFaq = () => api.get("/faq").then((r) => r.data);
 export const subscribeNewsletter = (payload) => api.post("/newsletter", payload).then((r) => r.data);
+export const unsubscribeNewsletter = (token) => api.post("/newsletter/unsubscribe", { token }).then((r) => r.data);
 export const sendContact = (payload) => api.post("/contact", payload).then((r) => r.data);
 
 // Payments

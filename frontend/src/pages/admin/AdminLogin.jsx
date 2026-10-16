@@ -32,7 +32,7 @@ export default function AdminLogin() {
 
   return (
     <>
-      <Seo title="Administration — La Maison d'Auben" description="Espace d'administration" path="/admin/login" />
+      <Seo title="Administration — La Maison d'Auben" description="Espace d'administration" path="/admin/login" noindex />
       <div className="flex min-h-screen items-center justify-center bg-[#F2EDE4] px-4">
         <div className="w-full max-w-md">
           <div className="mb-6 flex justify-center"><Logo /></div>

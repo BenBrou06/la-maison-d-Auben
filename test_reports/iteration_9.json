@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only compliance UI testing (desktop 1920 + mobile 390). Passed: withdrawal checkbox gating (shared state between both checkboxes, both buttons disabled until checked, redirect to checkout.stripe.com cs_test_ which I did not pay), budget-couple has no checkbox or buy button, footer newsletter (sr-only label, /confidentialite link, error toast without consent, success with consent), unsubscribe page (missing token, invalid token error, valid token success, meta robots noindex,nofollow), admin Newsletter tab (Inscrit/Désinscrit + copy-link buttons), canonicals, CGV/cookies/mentions/confidentialité content, skip link + focus on main#contenu, contact aria-labels, lightbox (role=dialog aria-modal=true, focus on close button, Escape closes it), no cookie banner, empty localStorage on public pages, self-hosted fonts in /fonts/*.woff2, /images/product-desk.jpg and /images/about-maison.jpg load, no horizontal overflow on mobile, admin Produits/Contenu tabs load. FAILED: the home page (and the /ressources and article pages) load article cover images from images.unsplash.com and images.pexels.com.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Network / third-party removal on /", "issue": "The home page requests images.unsplash.com (2 images) and images.pexels.com (1 image). The source is articles.cover_image in Mongo, seeded from backend/seed_data.py lines ~289/309/325. These images are rendered by Home.jsx:211, Blog.jsx:31/48 and Article.jsx:39, and Article.jsx:24 also puts them in the og:image tag. This is a third-party transfer of the visitor's IP, the same problem the compliance mission set out to remove. /a-propos and /boutique/budget-mensuel are clean.", "affected_selectors": ["Home resources section img", "Blog.jsx img", "Article.jsx img"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "HIGH: Self-host the 3 article cover images: download them into frontend/public/images/ (e.g. article-budget.jpg, article-voiture.jpg, article-epargne.jpg). Update seed_data.py and also migrate the existing DB documents: the seed uses $setOnInsert, so existing articles keep the Unsplash/Pexels URLs. Consider rejecting external cover_image hosts in admin article save.",
+    "INFO: The preview edge injects static.cloudflareinsights.com/beacon.min.js into the HTML. It is not in the code, so it is the platform, like recorder.js. Check the production host (la-maison-dauben.com) for this Cloudflare Web Analytics beacon; if present it must be disabled or declared in the cookie/privacy policy."
+  ],
+  "critical_code_review_comments": [
+    "Article cover_image accepts arbitrary external URLs (seed + admin), so third-party hotlinking can come back.",
+    "ProductDetail buy-now-btn has aria-describedby='withdrawal-consent', which is the checkbox id. Pointing it at the consent text span would be more meaningful (minor a11y).",
+    "The newsletter collection holds about 60 leftover test_nl_* / test_* subscribers from earlier backend test runs. Clean them up before production."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "95% (1 failing check: third-party images on /)"},
+  "seed_data_creation": "Created qa-ui-foot9@example.com (UI) and qa-ui-tok9@example.com (API, for valid-token unsubscribe) in newsletter; both deleted afterwards. No product data modified (budget-mensuel already had a gallery). One Stripe TEST checkout session created, not paid.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After the fix, re-run the network check on /, /ressources and /ressources/{slug} for unsplash/pexels hosts. Ignore assets.emergent.sh, /__emergent_overlay__/ and static.cloudflareinsights.com on preview (edge-injected). Admin page has no <main> element; use body. Admin stores auben_admin_token in localStorage (admin-only, expected)."
+}

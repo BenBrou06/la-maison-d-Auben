@@ -9,7 +9,7 @@ from typing import List, Optional
 import stripe
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Response
 from starlette.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, StrictBool
 from pymongo.errors import DuplicateKeyError
 from starlette.responses import JSONResponse
 
@@ -132,9 +132,22 @@ def clean(doc: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # Models
 # --------------------------------------------------------------------------- #
+NEWSLETTER_CONSENT_VERSION = "newsletter-v1-2026-06"
+NEWSLETTER_CONSENT_TEXT = "J'accepte de recevoir la newsletter et j'ai lu la politique de confidentialité."
+WITHDRAWAL_CONSENT_VERSION = "retractation-v1-2026-06"
+WITHDRAWAL_CONSENT_TEXT = (
+    "Je demande l'accès immédiat au fichier numérique dès la confirmation du paiement et je reconnais "
+    "perdre mon droit de rétractation dès le début de cette fourniture (article L.221-28, 13° du Code de la consommation)."
+)
+
+
 class NewsletterInput(BaseModel):
     email: EmailStr
-    consent: bool = True
+    consent: StrictBool
+
+
+class UnsubscribeInput(BaseModel):
+    token: str
 
 
 class ContactInput(BaseModel):
@@ -147,6 +160,8 @@ class ContactInput(BaseModel):
 class CheckoutInput(BaseModel):
     lookup_key: str
     origin_url: str
+    withdrawal_waiver: StrictBool = False
+    withdrawal_consent_version: str = ""
 
 
 class LoginInput(BaseModel):
@@ -305,17 +320,37 @@ async def get_faq():
 @api.post("/newsletter")
 async def subscribe_newsletter(request: Request, inp: NewsletterInput):
     check_rate(request, "newsletter", 10)
-    if not inp.consent:
+    if inp.consent is not True:
         raise HTTPException(400, "Le consentement est requis.")
     email = inp.email.lower()
+    consent = {
+        "consent": True, "consent_at": now_iso(),
+        "consent_text_version": NEWSLETTER_CONSENT_VERSION, "consent_text": NEWSLETTER_CONSENT_TEXT,
+        "status": "subscribed", "unsubscribed_at": None,
+    }
     existing = await db.newsletter.find_one({"email": email})
-    if existing:
+    if existing and existing.get("status") != "unsubscribed":
         return {"status": "already", "message": "Vous êtes déjà inscrit·e. Merci !"}
-    await db.newsletter.insert_one({
-        "id": str(uuid.uuid4()), "email": email, "consent": True,
-        "confirmed": False, "created_at": now_iso(),
-    })
+    if existing:
+        await db.newsletter.update_one({"email": email}, {"$set": consent})
+    else:
+        await db.newsletter.insert_one({
+            "id": str(uuid.uuid4()), "email": email, "created_at": now_iso(),
+            "unsubscribe_token": secrets.token_urlsafe(32), **consent,
+        })
     return {"status": "ok", "message": "Merci ! Vous êtes bien inscrit·e."}
+
+
+@api.post("/newsletter/unsubscribe")
+async def unsubscribe_newsletter(request: Request, inp: UnsubscribeInput):
+    check_rate(request, "newsletter-unsub", 10)
+    sub = await db.newsletter.find_one({"unsubscribe_token": inp.token}) if inp.token else None
+    if not sub:
+        raise HTTPException(404, "Lien de désinscription invalide.")
+    if sub.get("status") != "unsubscribed":
+        await db.newsletter.update_one({"unsubscribe_token": inp.token}, {"$set": {
+            "status": "unsubscribed", "consent": False, "unsubscribed_at": now_iso()}})
+    return {"status": "ok", "message": "Vous êtes désinscrit·e de la newsletter."}
 
 
 @api.post("/contact")
@@ -370,12 +405,12 @@ def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = 
         )
 
 
-def ensure_stripe_catalog():
+async def ensure_stripe_catalog():
+    # Source de vérité = prix en base (édité via l'admin), jamais le prix du seed.
     try:
-        for entry in seed_data.PRODUCTS:
-            if entry.get("status") != "available" or not entry.get("price"):
-                continue
-            sync_stripe_price(entry["lookup_key"], entry["name"], entry["price"], entry["currency"])
+        async for p in db.products.find({"price": {"$gt": 0}, "lookup_key": {"$nin": [None, ""]},
+                                         "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
+            sync_stripe_price(p["lookup_key"], p["name"], p["price"], p.get("currency", "eur"))
         logger.info("Stripe catalog ensured")
     except Exception as e:
         logger.error(f"Stripe catalog setup failed: {e}")
@@ -389,9 +424,22 @@ async def create_checkout(request: Request, req: CheckoutInput):
     if (not product or not product.get("download_storage_path")
             or product.get("download_is_placeholder") or not product.get("price")):
         raise HTTPException(409, "Produit indisponible à l'achat.")
+    if req.withdrawal_waiver is not True or req.withdrawal_consent_version != WITHDRAWAL_CONSENT_VERSION:
+        raise HTTPException(400, "Merci de cocher la case relative à l'accès immédiat et au droit de rétractation.")
+    withdrawal_consent = {
+        "accepted": True, "accepted_at": now_iso(),
+        "text_version": WITHDRAWAL_CONSENT_VERSION, "text": WITHDRAWAL_CONSENT_TEXT,
+        "ip": _client_ip(request), "user_agent": request.headers.get("user-agent", "")[:300],
+    }
+    expected = int(round(product["price"] * 100))
+    currency = product.get("currency", "eur")
     prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
-    if not prices:
-        raise HTTPException(500, f"Prix introuvable : {req.lookup_key}")
+    if not prices or prices[0].unit_amount != expected or prices[0].currency != currency:
+        # Le prix Stripe doit toujours être celui affiché sur le site (prix en base).
+        sync_stripe_price(req.lookup_key, product["name"], product["price"], currency)
+        prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
+    if not prices or prices[0].unit_amount != expected:
+        raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
     price = prices[0]
     # SÉCURITÉ : ne jamais utiliser l'origin_url fourni par le client pour des URLs sensibles.
     base = PUBLIC_BASE_URL
@@ -400,7 +448,9 @@ async def create_checkout(request: Request, req: CheckoutInput):
         mode="payment",
         success_url=f"{base}/paiement/succes?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base}/paiement/annule",
-        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else ""},
+        metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else "",
+                  "withdrawal_consent_version": WITHDRAWAL_CONSENT_VERSION,
+                  "withdrawal_consent_at": withdrawal_consent["accepted_at"]},
     )
     try:
         session = stripe.checkout.Session.create(**kwargs, managed_payments={"enabled": True})
@@ -417,6 +467,7 @@ async def create_checkout(request: Request, req: CheckoutInput):
         "product_slug": product["slug"] if product else "",
         "amount": (price.unit_amount or 0) / 100.0, "currency": price.currency,
         "status": "initiated", "payment_status": "pending",
+        "withdrawal_consent": withdrawal_consent,
         "created_at": now_iso(), "updated_at": now_iso(),
     })
     return {"checkout_url": session.url, "session_id": session.id}
@@ -454,6 +505,7 @@ async def _send_customer_email(order: dict):
             html=order_confirmation_html(
                 product_name=order["product_name"], amount=order["amount"],
                 currency=order["currency"], download_url=download_url, order_id=order["id"],
+                withdrawal_consent=order.get("withdrawal_consent"),
             ),
         )
         await db.orders.update_one({"session_id": sid}, {"$set": {
@@ -530,6 +582,7 @@ async def fulfill_order(session_id: str):
         "email_status": "pending",
         "owner_notified": False,
         "owner_email_status": "pending",
+        "withdrawal_consent": (tx or {}).get("withdrawal_consent"),
         "created_at": now_iso(),
     }
     # Idempotence : insertion atomique gardée par l'index unique session_id.
@@ -685,7 +738,12 @@ async def admin_orders(admin=Depends(get_current_admin)):
 
 @api.get("/admin/newsletter")
 async def admin_newsletter(admin=Depends(get_current_admin)):
-    return await db.newsletter.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    subs = await db.newsletter.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    for s in subs:
+        s["status"] = s.get("status", "subscribed")
+        if s.get("unsubscribe_token"):
+            s["unsubscribe_url"] = f"{PUBLIC_BASE_URL}/newsletter/desinscription?token={s['unsubscribe_token']}"
+    return subs
 
 
 @api.get("/admin/messages")
@@ -939,11 +997,16 @@ async def startup():
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
     await db.newsletter.create_index("email", unique=True)
+    await db.newsletter.create_index("unsubscribe_token", sparse=True)
+    async for sub in db.newsletter.find({"unsubscribe_token": {"$exists": False}}, {"_id": 1}):
+        await db.newsletter.update_one({"_id": sub["_id"]}, {"$set": {"unsubscribe_token": secrets.token_urlsafe(32)}})
     await db.orders.create_index("download_token")
     await db.orders.create_index("session_id", unique=True)
     await db.payment_transactions.create_index("session_id")
     await seed()
-    ensure_stripe_catalog()
+    for old, new in seed_data.LEGACY_COVER_IMAGES.items():
+        await db.articles.update_many({"cover_image": old}, {"$set": {"cover_image": new}})
+    await ensure_stripe_catalog()
     logger.info("Startup complete")
 
 

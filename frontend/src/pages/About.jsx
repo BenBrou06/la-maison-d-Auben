@@ -32,7 +32,7 @@ export default function About() {
         <div className="container-app grid gap-10 lg:grid-cols-2 lg:items-center">
           <Reveal>
             <img
-              src="https://images.unsplash.com/photo-1736576660063-854d978613cd?crop=entropy&cs=srgb&fm=jpg&q=85&w=1000"
+              src="/images/about-maison.jpg"
               alt="Un bureau chaleureux"
               className="aspect-[4/3] w-full rounded-2xl object-cover shadow-[0_18px_40px_-18px_rgba(30,58,43,0.3)]"
             />

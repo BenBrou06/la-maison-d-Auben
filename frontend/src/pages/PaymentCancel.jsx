@@ -6,7 +6,7 @@ import { Seo } from "@/components/Seo";
 export default function PaymentCancel() {
   return (
     <>
-      <Seo title="Paiement annulé — La Maison d'Auben" description="Votre paiement a été annulé." path="/paiement/annule" />
+      <Seo title="Paiement annulé — La Maison d'Auben" description="Votre paiement a été annulé." path="/paiement/annule" noindex />
       <div className="container-app flex min-h-[60vh] items-center justify-center py-16">
         <div className="w-full max-w-md text-center" data-testid="payment-cancel">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F2EDE4] text-[#3B6B4C]">

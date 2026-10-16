@@ -1,10 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://auben-preview-shop.preview.emergentagent.com/</loc><priority>1.0</priority></url>
-  <url><loc>https://auben-preview-shop.preview.emergentagent.com/boutique</loc><priority>0.9</priority></url>
-  <url><loc>https://auben-preview-shop.preview.emergentagent.com/boutique/budget-mensuel</loc><priority>0.9</priority></url>
-  <url><loc>https://auben-preview-shop.preview.emergentagent.com/ressources</loc><priority>0.7</priority></url>
-  <url><loc>https://auben-preview-shop.preview.emergentagent.com/a-propos</loc><priority>0.6</priority></url>
-  <url><loc>https://auben-preview-shop.preview.emergentagent.com/faq</loc><priority>0.5</priority></url>
-  <url><loc>https://auben-preview-shop.preview.emergentagent.com/contact</loc><priority>0.5</priority></url>
+  <url><loc>https://la-maison-dauben.com/</loc><priority>1.0</priority></url>
+  <url><loc>https://la-maison-dauben.com/boutique</loc><priority>0.9</priority></url>
+  <url><loc>https://la-maison-dauben.com/boutique/budget-mensuel</loc><priority>0.9</priority></url>
+  <url><loc>https://la-maison-dauben.com/boutique/budget-couple</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/boutique/car-cost</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/boutique/first-apartment</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/boutique/suivi-sportif</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/boutique/travel-manager</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/ressources</loc><priority>0.7</priority></url>
+  <url><loc>https://la-maison-dauben.com/ressources/comment-faire-son-budget-mensuel</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/ressources/combien-coute-reellement-une-voiture</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/ressources/comment-commencer-a-epargner</loc><priority>0.6</priority></url>
+  <url><loc>https://la-maison-dauben.com/a-propos</loc><priority>0.5</priority></url>
+  <url><loc>https://la-maison-dauben.com/faq</loc><priority>0.5</priority></url>
+  <url><loc>https://la-maison-dauben.com/contact</loc><priority>0.5</priority></url>
+  <url><loc>https://la-maison-dauben.com/produits-numeriques</loc><priority>0.4</priority></url>
+  <url><loc>https://la-maison-dauben.com/cgv</loc><priority>0.3</priority></url>
+  <url><loc>https://la-maison-dauben.com/mentions-legales</loc><priority>0.3</priority></url>
+  <url><loc>https://la-maison-dauben.com/confidentialite</loc><priority>0.3</priority></url>
+  <url><loc>https://la-maison-dauben.com/politique-cookies</loc><priority>0.3</priority></url>
 </urlset>

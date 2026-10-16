@@ -14,6 +14,7 @@ import About from "@/pages/About";
 import Contact from "@/pages/Contact";
 import Faq from "@/pages/Faq";
 import Legal from "@/pages/Legal";
+import NewsletterUnsubscribe from "@/pages/NewsletterUnsubscribe";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 
@@ -41,6 +42,7 @@ function App() {
           <Route path="/confidentialite" element={withLayout(<Legal pageKey="confidentialite" />)} />
           <Route path="/politique-cookies" element={withLayout(<Legal pageKey="politique-cookies" />)} />
           <Route path="/produits-numeriques" element={withLayout(<Legal pageKey="produits-numeriques" />)} />
+          <Route path="/newsletter/desinscription" element={withLayout(<NewsletterUnsubscribe />)} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminDashboard />} />
         </Routes>

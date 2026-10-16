@@ -286,7 +286,7 @@ ARTICLES = [
         "category": "Budget & Finance",
         "excerpt": "La méthode simple pour poser son budget en 30 minutes, même quand on part de zéro.",
         "read_time": 6,
-        "cover_image": "https://images.unsplash.com/photo-1564510714747-69c3bc1fab41?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
+        "cover_image": "/images/article-budget.jpg",
         "related_product_slugs": ["budget-mensuel"],
         "published_at": "2026-01-15T09:00:00+00:00",
         "content": [
@@ -306,7 +306,7 @@ ARTICLES = [
         "category": "Automobile",
         "excerpt": "Au-delà du prix d'achat, voici tous les coûts qu'on oublie trop souvent.",
         "read_time": 7,
-        "cover_image": "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
+        "cover_image": "/images/article-voiture.jpg",
         "related_product_slugs": [],
         "published_at": "2026-01-10T09:00:00+00:00",
         "content": [
@@ -322,7 +322,7 @@ ARTICLES = [
         "category": "Budget & Finance",
         "excerpt": "Trois habitudes simples pour se constituer une épargne, sans se priver.",
         "read_time": 5,
-        "cover_image": "https://images.pexels.com/photos/8251157/pexels-photo-8251157.jpeg?auto=compress&cs=tinysrgb&w=1200",
+        "cover_image": "/images/article-epargne.jpg",
         "related_product_slugs": ["budget-mensuel"],
         "published_at": "2026-01-05T09:00:00+00:00",
         "content": [
@@ -368,3 +368,6 @@ def build_placeholder_xlsx() -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+# Anciennes URLs distantes des couvertures d'articles -> fichiers auto-hébergés.
+LEGACY_COVER_IMAGES = {'https://images.unsplash.com/photo-1564510714747-69c3bc1fab41?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200': '/images/article-budget.jpg', 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200': '/images/article-voiture.jpg', 'https://images.pexels.com/photos/8251157/pexels-photo-8251157.jpeg?auto=compress&cs=tinysrgb&w=1200': '/images/article-epargne.jpg'}

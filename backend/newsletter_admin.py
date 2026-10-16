@@ -36,8 +36,6 @@ def ineligibility(s: dict):
         return "Retiré de la liste"
     if s.get("status") == "unsubscribed":
         return "Désinscrit"
-    if s.get("is_test"):
-        return "Adresse de test"
     if s.get("consent") is not True or not s.get("consent_at") or not s.get("consent_text_version"):
         return "Consentement non prouvé"
     if not s.get("unsubscribe_token"):
@@ -105,13 +103,8 @@ class ComposeInput(BaseModel):
 
 
 class SendInput(ComposeInput):
-    recipient_ids: List[str] = []
-    all_eligible: bool = False
+    recipient_ids: List[str] = Field(default_factory=list, max_length=5000)
     confirmation: str
-
-
-class SubscriberPatch(BaseModel):
-    is_test: bool
 
 
 @router.get("")
@@ -130,14 +123,6 @@ async def list_subscribers(admin=Depends(get_current_admin)):
 async def settings(admin=Depends(get_current_admin)):
     return {"dry_run": DRY_RUN, "owner_email_configured": bool(os.environ.get("OWNER_EMAIL")),
             "confirm_word": CONFIRM_WORD}
-
-
-@router.patch("/{sub_id}")
-async def patch_subscriber(sub_id: str, inp: SubscriberPatch, admin=Depends(get_current_admin)):
-    res = await db.newsletter.update_one({"id": sub_id}, {"$set": {"is_test": inp.is_test, "updated_at": now_iso()}})
-    if not res.matched_count:
-        raise HTTPException(404, "Abonné introuvable.")
-    return {"ok": True}
 
 
 @router.delete("/{sub_id}")
@@ -229,12 +214,9 @@ async def _start_campaign(inp: SendInput, admin: dict):
         raise HTTPException(409, "Un envoi est déjà en cours.")
     subs = await db.newsletter.find({}, {"_id": 0}).to_list(5000)
     eligible = [s for s in subs if ineligibility(s) is None]
-    if inp.all_eligible:
-        targets = [s["id"] for s in eligible]
-    else:
-        wanted = set(inp.recipient_ids)
-        targets = [s["id"] for s in eligible if s["id"] in wanted]
-    excluded = len(set(inp.recipient_ids) - set(targets)) if not inp.all_eligible else 0
+    wanted = set(inp.recipient_ids)
+    targets = [s["id"] for s in eligible if s["id"] in wanted]
+    excluded = len(wanted - set(targets))
     if not targets:
         raise HTTPException(400, "Aucun destinataire éligible sélectionné.")
     cid = str(uuid.uuid4())

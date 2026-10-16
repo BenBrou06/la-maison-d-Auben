@@ -40,7 +40,6 @@ export const adminOrders = () => api.get("/admin/orders").then((r) => r.data);
 export const adminNewsletter = () => api.get("/admin/newsletter").then((r) => r.data);
 export const adminNewsletterSettings = () => api.get("/admin/newsletter/settings").then((r) => r.data);
 export const adminNewsletterCampaigns = () => api.get("/admin/newsletter/campaigns").then((r) => r.data);
-export const adminNewsletterPatch = (id, payload) => api.patch(`/admin/newsletter/${id}`, payload).then((r) => r.data);
 export const adminNewsletterRemove = (id) => api.delete(`/admin/newsletter/${id}`).then((r) => r.data);
 export const adminNewsletterPreview = (payload) => api.post("/admin/newsletter/preview", payload).then((r) => r.data);
 export const adminNewsletterTest = (payload) => api.post("/admin/newsletter/test", payload).then((r) => r.data);

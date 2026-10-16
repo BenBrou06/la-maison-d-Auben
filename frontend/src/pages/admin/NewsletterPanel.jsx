@@ -10,13 +10,12 @@ export default function NewsletterPanel() {
   const { data: subs = [] } = useQuery({ queryKey: ["admin-newsletter"], queryFn: adminNewsletter });
   const { data: settings } = useQuery({ queryKey: ["admin-newsletter-settings"], queryFn: adminNewsletterSettings });
   const [selected, setSelected] = useState(new Set());
-  const [allEligible, setAllEligible] = useState(false);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["admin-newsletter"] });
     qc.invalidateQueries({ queryKey: ["admin-newsletter-campaigns"] });
   };
   const eligible = subs.filter((s) => s.eligible);
-  const recipientCount = allEligible ? eligible.length : eligible.filter((s) => selected.has(s.id)).length;
+  const recipientCount = eligible.filter((s) => selected.has(s.id)).length;
 
   return (
     <div className="space-y-6" data-testid="admin-newsletter-panel">
@@ -29,17 +28,14 @@ export default function NewsletterPanel() {
         subs={subs}
         selected={selected}
         setSelected={setSelected}
-        allEligible={allEligible}
-        setAllEligible={setAllEligible}
         onChange={refresh}
       />
       <Composer
         settings={settings}
         recipientCount={recipientCount}
-        allEligible={allEligible}
-        selectedIds={[...selected]}
+        selectedIds={eligible.filter((s) => selected.has(s.id)).map((s) => s.id)}
         onTested={refresh}
-        onSent={() => { setSelected(new Set()); setAllEligible(false); refresh(); }}
+        onSent={() => { setSelected(new Set()); refresh(); }}
       />
       <CampaignHistory />
     </div>

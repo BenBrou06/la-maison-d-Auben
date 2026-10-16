@@ -7,7 +7,7 @@ import { ConfirmSendDialog } from "@/pages/admin/newsletter/ConfirmSendDialog";
 
 const btn = "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
-export function Composer({ settings, recipientCount, allEligible, selectedIds, onSent, onTested }) {
+export function Composer({ settings, recipientCount, selectedIds, onSent, onTested }) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
@@ -72,7 +72,7 @@ export function Composer({ settings, recipientCount, allEligible, selectedIds, o
       </div>
       <ConfirmSendDialog
         open={confirmOpen} onOpenChange={setConfirmOpen} subject={subject} body={body}
-        recipientCount={recipientCount} allEligible={allEligible} selectedIds={selectedIds}
+        recipientCount={recipientCount} selectedIds={selectedIds}
         confirmWord={settings?.confirm_word || "ENVOYER"} dryRun={settings?.dry_run}
         onSent={() => { setSubject(""); setBody(""); setPreviewHtml(""); onSent(); }}
       />

@@ -34,7 +34,7 @@ def seed():
                  unsubscribe_token=f"{P}tok-legacy", created_at=NOW),
             dict(_ok("nover"), consent_text_version=None),
             dict(_ok("removed"), removed=True, removed_at=NOW),
-            dict(_ok("istest"), is_test=True)]
+            dict(_ok("flagged"), is_test=True)]
     mdb.newsletter.insert_many(docs)
     yield
     mdb.newsletter.delete_many({"$or": [{"id": {"$regex": "^" + P}}, {"email": {"$regex": "^" + P}}]})
@@ -78,7 +78,7 @@ def _send(h, **kw):
 class TestAuthRequired:
     @pytest.mark.parametrize("method,path", [
         ("get", "/admin/newsletter"), ("get", "/admin/newsletter/settings"), ("get", "/admin/newsletter/campaigns"),
-        ("patch", f"/admin/newsletter/{P}ok1"), ("delete", f"/admin/newsletter/{P}ok1"),
+        ("delete", f"/admin/newsletter/{P}ok1"),
         ("post", "/admin/newsletter/preview"), ("post", "/admin/newsletter/send"), ("post", "/admin/newsletter/test")])
     def test_401(self, method, path):
         r = getattr(requests, method)(f"{API}{path}", json={"is_test": True, "subject": "s", "body": "b", "confirmation": "ENVOYER"})
@@ -97,20 +97,14 @@ class TestListAndSettings:
         assert s[f"{P}legacy"]["ineligible_reason"] == "Consentement non prouvé"
         assert s[f"{P}nover"]["ineligible_reason"] == "Consentement non prouvé"
         assert s[f"{P}removed"]["ineligible_reason"] == "Retiré de la liste"
-        assert s[f"{P}istest"]["ineligible_reason"] == "Adresse de test"
+        assert s[f"{P}flagged"]["eligible"] is True  # l'ancien marquage « test » n'a plus d'effet
         assert "_id" not in s[f"{P}ok1"]
         assert "/newsletter/desinscription?token=" in s[f"{P}ok1"]["unsubscribe_url"]
 
 
 class TestPatchRemove:
-    def test_mark_test_and_unmark(self, h):
-        assert requests.patch(f"{API}/admin/newsletter/{P}ok4", headers=h, json={"is_test": True}).status_code == 200
-        assert _subs(h)[f"{P}ok4"]["ineligible_reason"] == "Adresse de test"
-        assert requests.patch(f"{API}/admin/newsletter/{P}ok4", headers=h, json={"is_test": False}).status_code == 200
-        assert _subs(h)[f"{P}ok4"]["eligible"] is True
-
-    def test_patch_404(self, h):
-        assert requests.patch(f"{API}/admin/newsletter/{P}nope", headers=h, json={"is_test": True}).status_code == 404
+    def test_patch_endpoint_removed(self, h):
+        assert requests.patch(f"{API}/admin/newsletter/{P}ok4", headers=h, json={"is_test": True}).status_code == 405
 
     def test_soft_remove_keeps_proof(self, h):
         assert requests.delete(f"{API}/admin/newsletter/{P}ok3", headers=h).status_code == 200
@@ -146,15 +140,15 @@ class TestSend:
         assert _send(h, recipient_ids=[f"{P}ok1"], confirmation="envoyer").status_code == 400
 
     def test_no_eligible(self, h):
-        r = _send(h, recipient_ids=[f"{P}unsub", f"{P}legacy", f"{P}removed", f"{P}istest", f"{P}nover"])
+        r = _send(h, recipient_ids=[f"{P}unsub", f"{P}legacy", f"{P}removed", f"{P}nover"])
         assert r.status_code == 400
 
     def test_server_refilters(self, h):
-        ids = [f"{P}ok1", f"{P}ok2", f"{P}unsub", f"{P}legacy", f"{P}removed", f"{P}istest", f"{P}nover", f"{P}ok3"]
+        ids = [f"{P}ok1", f"{P}ok2", f"{P}unsub", f"{P}legacy", f"{P}removed", f"{P}nover", f"{P}ok3"]
         r = _send(h, recipient_ids=ids)
         assert r.status_code == 200, r.text
         d = r.json()
-        assert d["recipients"] == 2 and d["excluded"] == 6 and d["mode"] == "dry_run"
+        assert d["recipients"] == 2 and d["excluded"] == 5 and d["mode"] == "dry_run"
         c = _wait_campaign(h, d["campaign_id"])
         assert c["status"] == "done" and c["kind"] == "campaign"
         assert c["counts"]["simulated"] == 2 and c["counts"]["sent"] == 0
@@ -168,16 +162,20 @@ class TestSend:
         assert s["eligible"] is False and s["ineligible_reason"] == "Désinscrit"
         assert _send(h, recipient_ids=[f"{P}unsubme"]).status_code == 400
 
-    def test_all_eligible(self, h):
+    def test_empty_selection_rejected(self, h):
+        assert _send(h, recipient_ids=[]).status_code == 400
+        assert _send(h, all_eligible=True).status_code == 400  # plus d'envoi « à tous » implicite
+
+    def test_select_all_eligible(self, h):
         eligible = [s for s in requests.get(f"{API}/admin/newsletter", headers=h).json() if s["eligible"]]
-        r = _send(h, all_eligible=True)
+        r = _send(h, recipient_ids=[s["id"] for s in eligible] + [f"{P}unsub", f"{P}legacy"])
         assert r.status_code == 200
         assert r.json()["recipients"] == len(eligible)
         c = _wait_campaign(h, r.json()["campaign_id"], timeout=30)
         assert c["status"] == "done"
         emails = {x["email"] for x in c["results"]}
         assert f"{P}ok1@exemple-fictif.fr" in emails
-        assert not any(e.startswith(f"{P}") and e.split("@")[0][len(P):] in ("unsub", "legacy", "removed", "istest", "nover", "ok3", "unsubme") for e in emails)
+        assert not any(e.startswith(f"{P}") and e.split("@")[0][len(P):] in ("unsub", "legacy", "removed", "nover", "ok3", "unsubme") for e in emails)
         assert all(x["status"] == "simulated" for x in c["results"])
 
     def test_send_test_owner(self, h):

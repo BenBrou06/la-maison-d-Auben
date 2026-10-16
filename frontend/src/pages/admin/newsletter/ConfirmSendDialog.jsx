@@ -5,7 +5,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 
-export function ConfirmSendDialog({ open, onOpenChange, subject, body, recipientCount, allEligible, selectedIds, confirmWord, dryRun, onSent }) {
+export function ConfirmSendDialog({ open, onOpenChange, subject, body, recipientCount, selectedIds, confirmWord, dryRun, onSent }) {
   const [typed, setTyped] = useState("");
   const [sending, setSending] = useState(false);
   const close = (o) => { if (!o) setTyped(""); onOpenChange(o); };
@@ -14,7 +14,7 @@ export function ConfirmSendDialog({ open, onOpenChange, subject, body, recipient
     setSending(true);
     try {
       const r = await adminNewsletterSend({
-        subject, body, all_eligible: allEligible, recipient_ids: allEligible ? [] : selectedIds, confirmation: typed,
+        subject, body, recipient_ids: selectedIds, confirmation: typed,
       });
       toast.success(`Envoi lancé vers ${r.recipients} destinataire(s)${r.mode === "dry_run" ? " — simulation" : ""}.`);
       close(false);
@@ -32,7 +32,7 @@ export function ConfirmSendDialog({ open, onOpenChange, subject, body, recipient
         </DialogHeader>
         <dl className="space-y-2 rounded-xl bg-[#FAF8F5] p-4 text-sm">
           <div><dt className="text-xs text-[#626D66]">Objet</dt><dd className="font-medium text-[#1E3A2B]" data-testid="confirm-subject">{subject}</dd></div>
-          <div><dt className="text-xs text-[#626D66]">Destinataires</dt><dd className="font-medium text-[#1E3A2B]" data-testid="confirm-recipient-count">{recipientCount} {allEligible ? "(tous les abonnés éligibles)" : "(sélection)"}</dd></div>
+          <div><dt className="text-xs text-[#626D66]">Destinataires</dt><dd className="font-medium text-[#1E3A2B]" data-testid="confirm-recipient-count">{recipientCount} abonné{recipientCount > 1 ? "s" : ""} sélectionné{recipientCount > 1 ? "s" : ""}</dd></div>
           {dryRun && <div className="text-xs text-[#6B4E1F]">Mode simulation : aucun e-mail ne sera réellement envoyé.</div>}
         </dl>
         <label className="block text-sm text-[#2C332E]">

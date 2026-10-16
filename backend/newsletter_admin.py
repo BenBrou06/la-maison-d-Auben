@@ -24,6 +24,7 @@ IDENTITY = ("La Maison d'Auben — BROU, entrepreneur individuel — 885 Chemin 
             "SIRET 130 351 562 00017 — lamaisondauben@gmail.com")
 _URL = re.compile(r"https://[^\s<>\"']+")
 _tasks = set()
+_send_lock = asyncio.Lock()
 
 
 def now_iso():
@@ -75,7 +76,10 @@ def render_body(body: str) -> str:
 
 
 def newsletter_html(subject: str, body: str, unsubscribe_url: str, consent_date: str = "") -> str:
-    since = f" le {escape(consent_date[:10])}" if consent_date else ""
+    since = ""
+    if consent_date:
+        y, m, d = consent_date[:10].split("-")
+        since = f" le {d}/{m}/{y}"
     return (
         '<div style="background:#FAF8F5;padding:32px 16px;font-family:Helvetica,Arial,sans-serif">'
         '<div style="max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:16px;padding:32px;color:#2C332E;'
@@ -216,6 +220,11 @@ async def _run_campaign(cid: str, sub_ids: List[str], subject: str, body: str):
 async def send_campaign(inp: SendInput, admin=Depends(get_current_admin)):
     if inp.confirmation != CONFIRM_WORD:
         raise HTTPException(400, f"Confirmation invalide : tapez {CONFIRM_WORD}.")
+    async with _send_lock:
+        return await _start_campaign(inp, admin)
+
+
+async def _start_campaign(inp: SendInput, admin: dict):
     if await db.newsletter_campaigns.find_one({"status": "sending"}):
         raise HTTPException(409, "Un envoi est déjà en cours.")
     subs = await db.newsletter.find({}, {"_id": 0}).to_list(5000)

@@ -82,3 +82,10 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Cause : ensure_stripe_catalog() (exécuté à chaque démarrage/déploiement) resynchronisait Stripe sur le prix codé en dur du seed (7,99) au lieu du prix en base modifié via l'admin (6,99).
 - Correctif : ensure_stripe_catalog async lit les produits en base ; create_checkout vérifie que le Price Stripe == prix en base et resynchronise sinon (503 si impossible). Taxes inclusive, webhooks, e-mails, téléchargements, case de renonciation inchangés.
 - Preview : prix budget-mensuel = 6,99 ; sessions test amount_total=699 vérifiées (après redémarrage et en cas de désynchronisation forcée). Tests 15/15.
+
+## 2026-06 — Envoi de newsletters depuis l'admin (Preview, NON déployé)
+- backend/newsletter_admin.py (router /api/admin/newsletter) : liste + éligibilité (retiré / désinscrit / test manuel / consentement non prouvé / token manquant), PATCH is_test, DELETE = retrait doux (removed, removed_at, preuve conservée), preview, test (OWNER_EMAIL seul), send (confirmation "ENVOYER", re-filtrage serveur, 1 e-mail par destinataire, re-vérification de chaque abonné juste avant envoi, tâche async + verrou), historique newsletter_campaigns (résultats par destinataire), campagnes "sending" marquées "interrupted" au démarrage.
+- E-mail : gabarit Maison d'Auben, texte simple auto-formaté (paragraphes, listes, liens https), pied : date de consentement, lien de désinscription personnel, identité légale. Contrôle de sécurité _assert_safe_email appliqué aussi en aperçu/simulation.
+- NEWSLETTER_DRY_RUN="true" dans backend/.env Preview → statut "simulated", aucun envoi. En production, absent = envois réels.
+- Frontend : pages/admin/NewsletterPanel.jsx + pages/admin/newsletter/*.
+- Tests : backend/tests/test_newsletter_admin.py 23/23 (lancer avec -n 0), iteration_10.json UI OK ; bug "le test réinitialise la sélection" corrigé, date FR dans le pied.

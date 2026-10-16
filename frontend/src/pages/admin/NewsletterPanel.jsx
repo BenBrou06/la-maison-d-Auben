@@ -38,6 +38,7 @@ export default function NewsletterPanel() {
         recipientCount={recipientCount}
         allEligible={allEligible}
         selectedIds={[...selected]}
+        onTested={refresh}
         onSent={() => { setSelected(new Set()); setAllEligible(false); refresh(); }}
       />
       <CampaignHistory />

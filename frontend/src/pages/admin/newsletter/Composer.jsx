@@ -7,7 +7,7 @@ import { ConfirmSendDialog } from "@/pages/admin/newsletter/ConfirmSendDialog";
 
 const btn = "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
-export function Composer({ settings, recipientCount, allEligible, selectedIds, onSent }) {
+export function Composer({ settings, recipientCount, allEligible, selectedIds, onSent, onTested }) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
@@ -24,7 +24,7 @@ export function Composer({ settings, recipientCount, allEligible, selectedIds, o
     try {
       const r = await adminNewsletterTest({ subject, body });
       toast.success(r.status === "simulated" ? "Test simulé (aucun e-mail envoyé)." : "Test envoyé à votre adresse vendeur.");
-      onSent();
+      onTested();
     } catch (e) { toast.error(e.response?.data?.detail || "Envoi du test impossible."); }
     setBusy(false);
   };

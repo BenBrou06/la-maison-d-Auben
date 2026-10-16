@@ -38,6 +38,12 @@ export const adminLogin = (payload) => api.post("/admin/login", payload).then((r
 export const adminMe = () => api.get("/admin/me").then((r) => r.data);
 export const adminOrders = () => api.get("/admin/orders").then((r) => r.data);
 export const adminNewsletter = () => api.get("/admin/newsletter").then((r) => r.data);
+export const adminNewsletterSettings = () => api.get("/admin/newsletter/settings").then((r) => r.data);
+export const adminNewsletterCampaigns = () => api.get("/admin/newsletter/campaigns").then((r) => r.data);
+export const adminNewsletterRemove = (id) => api.delete(`/admin/newsletter/${id}`).then((r) => r.data);
+export const adminNewsletterPreview = (payload) => api.post("/admin/newsletter/preview", payload).then((r) => r.data);
+export const adminNewsletterTest = (payload) => api.post("/admin/newsletter/test", payload).then((r) => r.data);
+export const adminNewsletterSend = (payload) => api.post("/admin/newsletter/send", payload).then((r) => r.data);
 export const adminMessages = () => api.get("/admin/messages").then((r) => r.data);
 export const adminSaveProduct = (slug, payload) =>
   (slug ? api.put(`/admin/products/${slug}`, payload) : api.post("/admin/products", payload)).then((r) => r.data);

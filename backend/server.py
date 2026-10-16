@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse
 
 from database import db
 from auth import hash_password, verify_password, create_access_token, get_current_admin
+from newsletter_admin import router as newsletter_router, mark_interrupted_campaigns
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
@@ -736,16 +737,6 @@ async def admin_orders(admin=Depends(get_current_admin)):
     return await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 
-@api.get("/admin/newsletter")
-async def admin_newsletter(admin=Depends(get_current_admin)):
-    subs = await db.newsletter.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
-    for s in subs:
-        s["status"] = s.get("status", "subscribed")
-        if s.get("unsubscribe_token"):
-            s["unsubscribe_url"] = f"{PUBLIC_BASE_URL}/newsletter/desinscription?token={s['unsubscribe_token']}"
-    return subs
-
-
 @api.get("/admin/messages")
 async def admin_messages(admin=Depends(get_current_admin)):
     return await db.contact_messages.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
@@ -1007,6 +998,7 @@ async def startup():
     for old, new in seed_data.LEGACY_COVER_IMAGES.items():
         await db.articles.update_many({"cover_image": old}, {"$set": {"cover_image": new}})
     await ensure_stripe_catalog()
+    await mark_interrupted_campaigns()
     logger.info("Startup complete")
 
 
@@ -1023,6 +1015,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Une erreur interne est survenue. Réessayez plus tard."})
 
 
+api.include_router(newsletter_router)
 app.include_router(api)
 
 # CORS : configurable via CORS_ORIGINS. "*" (ou vide) = reflet de l'origine (preview/dev).

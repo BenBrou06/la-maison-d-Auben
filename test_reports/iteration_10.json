@@ -1,0 +1,37 @@
+{
+  "summary": "Admin Newsletter sending feature tested end-to-end in Preview (DRY_RUN). Backend: 23/23 new pytest pass (auth 401 on all 8 endpoints, eligibility reasons, is_test PATCH + 404, soft DELETE keeps consent proof + idempotent + 404, preview HTML escaping/list/link/unsubscribe/SIRET, send: confirmation 400, no-eligible 400, server-side re-filtering of unsubscribed/legacy/no-version/removed/is_test ids, all_eligible, async campaign -> done with 'simulated' results, /test -> OWNER_EMAIL only simulated, public unsubscribe -> ineligible & skipped, public signup still requires consent). test_compliance_rgpd.py 14 pass + 1 skip (skip only due to admin login rate-limit; Stripe waiver 400 tests pass). Frontend: all requested flows verified via Playwright with fictif-qa- rows. One UX bug found: sending a test resets the recipient selection.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/newsletter/send", "issue": "The 409 'envoi déjà en cours' guard is a find_one followed by insert, not atomic: two concurrent requests can both pass and start two campaigns. Low risk with a single admin."},
+      {"endpoint": "POST /api/admin/newsletter/send", "issue": "The task is fire-and-forget asyncio.create_task. A restart mid-send marks the campaign 'interrupted', and there is no resume. Acceptable for now, but the remaining recipients are never sent."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Composer.sendTest", "issue": "After 'M'envoyer un test' succeeds, Composer calls onSent(), which runs NewsletterPanel's reset (setSelected(new Set()); setAllEligible(false)). The recipient selection is lost and the button goes back to 'Envoyer à 0 destinataire'. The admin has to reselect recipients after every test (subject/body are kept). Fix: pass a separate refresh-only callback (e.g. onTested={refresh}) for the test path.", "selector": "[data-testid='newsletter-send-test-btn'] -> [data-testid='newsletter-open-send-btn']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Newsletter email footer", "issues": ["Consent date in the email footer shows as ISO 'le 2026-10-16'. A French format (16/10/2026) would read better."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_newsletter_admin.py", "/app/test_reports/pytest/pytest_newsletter.xml"],
+  "action_items": [
+    "Composer.jsx: don't call the panel's onSent (selection reset) after a successful test send; only refresh campaigns.",
+    "Optional: make the 'sending' guard atomic (e.g. a unique partial index on status='sending' or findOneAndUpdate lock).",
+    "Optional: format the consent date in newsletter_html as DD/MM/YYYY."
+  ],
+  "critical_code_review_comments": [
+    "Server re-filtering via ineligibility() runs both at send time and per recipient inside _run_campaign. Good defense in depth.",
+    "Preview iframe uses sandbox='' with srcDoc and user content is html-escaped. XSS-safe.",
+    "test_newsletter_admin.py must be run with -n 0 (pytest.ini enables xdist). Parallel workers race on the module seed/teardown fixture.",
+    "Admin login is rate-limited to 5/min. Running several test files back to back causes skips; wait 60s between suites."
+  ],
+  "updated_files": ["/app/backend/tests/test_newsletter_admin.py"],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "95% (all flows pass; 1 selection-reset UX bug)"},
+  "seed_data_creation": "Fictitious fictif-qa-* subscribers inserted directly in Mongo by the test fixture and the UI run. All were deleted afterwards, along with their newsletter_campaigns (TEST_QA*). The DB still holds the original 60 subscribers, untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_newsletter_admin.py -n 0 -v. The fixture seeds and cleans fictif-qa-* data itself. UI: only 1 eligible subscriber exists among preview data besides seeded ones (most legacy rows lack consent proof). No real email was sent (NEWSLETTER_DRY_RUN=true) and no payment was made."
+}

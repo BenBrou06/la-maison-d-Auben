@@ -1,0 +1,33 @@
+{
+  "summary": "Retested the Newsletter tab update in Preview (DRY_RUN). The 'Adresse de test' checkbox, the 'Test' badge, PATCH /admin/newsletter/{id} and the is_test exclusion are all gone. Selection is now explicit: a 'Destinataire' checkbox on eligible rows only, plus a 'Tout sélectionner/Tout désélectionner' button and an 'N sélectionné(s)' counter. Nothing is pre-selected, all_eligible is no longer honoured, and an empty selection returns 400. Backend: test_newsletter_admin.py 22/22 passed and test_compliance_rgpd.py 15/15 passed. Extra checks: recipient_ids over 5000 -> 422, unknown id -> 400. cleanup_test_data.py was run in simulation mode only (0 rows matched, nothing deleted). Frontend (Playwright, fictif-qa-ui- seeded rows) passed every step: rows with an old is_test flag are now eligible and selectable; unsubscribed and unproven-consent rows have no checkbox; select-all selects 3 and deselect-all returns to 0; the send button is disabled at 0 and the count stays in sync; a test send keeps the selection (the iteration_10 bug is fixed); the confirm dialog shows '2 abonnés sélectionnés'; the dry-run campaign went to exactly the 2 selected addresses; afterwards the form and selection reset. Removing a selected subscriber also removes it from the selection.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/newsletter/send", "issue": "Still open from iteration_10: the 'sending' guard is not atomic (find_one, then insert)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Newsletter list on mobile (390px)", "issues": ["Email addresses wrap every few characters because the status and consent pills share the same row (break-all with flex-1). Put the pills on their own line below the email on small screens."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_newsletter_admin.py", "/app/backend/tests/test_compliance_rgpd.py", "/app/backend/tests/seed_newsletter_ui.py", "/app/test_reports/pytest/pytest_newsletter_it11.xml"],
+  "action_items": [
+    "Optional: fix the email wrapping on mobile in SubscriberList rows.",
+    "Optional: make the 'sending' lock atomic."
+  ],
+  "critical_code_review_comments": [
+    "cleanup_test_data.py: the case-insensitive regex 'test' matches any substring, so real addresses or names such as 'contest@', 'attestation', 'Testard' or 'celestest' would be hard-deleted with --apply. Review the dry-run list before applying, or use a stricter pattern (e.g. a word boundary or a known prefix).",
+    "cleanup_test_data.py uses delete_many on newsletter, which removes consent proof. That is intended for test data, but be careful in production.",
+    "newsletter-selected-count shows selected.size while the send button uses the filtered eligible count. These currently match because removal deletes the id from the selection, but they could drift if a selected subscriber becomes ineligible on refetch (e.g. unsubscribes in the meantime). Consider deriving both from the same filtered list.",
+    "The is_test field stays in the DB documents but is ignored, which is fine. It is still returned in the list payload."
+  ],
+  "updated_files": ["/app/backend/tests/seed_newsletter_ui.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Seeded 5 fictif-qa-ui-* newsletter rows and QA-UI campaigns for the UI test, then cleaned them up (python tests/seed_newsletter_ui.py --clean). The pytest fixture cleans fictif-qa-* rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the newsletter tests with -n 0. Seed UI rows with backend/tests/seed_newsletter_ui.py and remove them with --clean. NEWSLETTER_DRY_RUN=true in Preview. Admin credentials are in /app/memory/test_credentials.md. Never run cleanup_test_data.py with --apply."
+}

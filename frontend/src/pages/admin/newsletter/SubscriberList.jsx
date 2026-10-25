@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
-import { adminNewsletterRemove } from "@/lib/api";
+import { Trash2, Undo2, XCircle } from "lucide-react";
+import { adminNewsletterRemove, adminNewsletterRestore, adminNewsletterPurge } from "@/lib/api";
+import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -15,11 +16,11 @@ const statusPill = (s) => {
 };
 
 const consentPill = (s) =>
-  s.consent === true && s.consent_at && s.consent_text_version
+  s.consent_valid
     ? <Pill tone="green" testid={`sub-consent-${s.id}`}>Consentement prouvé</Pill>
     : <Pill tone="amber" testid={`sub-consent-${s.id}`}>Consentement non prouvé</Pill>;
 
-function SubscriberRow({ s, checked, onToggle, onRemove }) {
+function SubscriberRow({ s, checked, onToggle, onRemove, onRestore, onPurge }) {
   return (
     <li className="rounded-lg bg-[#FAF8F5] px-4 py-3 text-sm" data-testid={`admin-newsletter-item-${s.id}`}>
       <div className="flex flex-wrap items-center gap-3">
@@ -38,11 +39,18 @@ function SubscriberRow({ s, checked, onToggle, onRemove }) {
         {s.unsubscribed_at && <span>Désinscrit : {fmtDate(s.unsubscribed_at)}</span>}
         {s.removed_at && <span>Retiré : {fmtDate(s.removed_at)}</span>}
         {!s.eligible && <span className="text-[#8A2A1F]" data-testid={`sub-ineligible-${s.id}`}>Exclu : {s.ineligible_reason}</span>}
-        {!s.removed && (
+        {s.removed ? (
+          <button onClick={() => onRestore(s)} className="inline-flex items-center gap-1 text-[#3B6B4C] hover:underline" data-testid={`sub-restore-btn-${s.id}`}>
+            <Undo2 className="h-3.5 w-3.5" /> Restaurer
+          </button>
+        ) : (
           <button onClick={() => onRemove(s)} className="inline-flex items-center gap-1 text-[#8A2A1F] hover:underline" data-testid={`sub-remove-btn-${s.id}`}>
-            <Trash2 className="h-3.5 w-3.5" /> Retirer
+            <XCircle className="h-3.5 w-3.5" /> Retirer
           </button>
         )}
+        <button onClick={() => onPurge(s)} className="inline-flex items-center gap-1 text-[#8A2A1F] hover:underline" data-testid={`sub-purge-btn-${s.id}`}>
+          <Trash2 className="h-3.5 w-3.5" /> Supprimer définitivement
+        </button>
       </div>
     </li>
   );
@@ -51,6 +59,20 @@ function SubscriberRow({ s, checked, onToggle, onRemove }) {
 export function SubscriberList({ subs, selected, setSelected, onChange }) {
   const [showHidden, setShowHidden] = useState(false);
   const [toRemove, setToRemove] = useState(null);
+  const [toPurge, setToPurge] = useState(null);
+  const restore = async (sub) => {
+    try { await adminNewsletterRestore(sub.id); toast.success("Abonné restauré."); onChange(); }
+    catch { toast.error("Restauration impossible."); }
+  };
+  const purge = async (word) => {
+    try {
+      await adminNewsletterPurge(toPurge.id, word);
+      toast.success("Abonné supprimé définitivement.");
+      const next = new Set(selected); next.delete(toPurge.id); setSelected(next);
+      onChange();
+    } catch (e) { toast.error(e.response?.data?.detail || "Suppression impossible."); }
+    setToPurge(null);
+  };
   const visible = subs.filter((s) => showHidden || !s.removed);
   const eligibleIds = subs.filter((s) => s.eligible).map((s) => s.id);
   const eligibleCount = eligibleIds.length;
@@ -90,7 +112,7 @@ export function SubscriberList({ subs, selected, setSelected, onChange }) {
       {visible.length === 0 ? <p className="text-sm text-[#626D66]">Aucun abonné pour le moment.</p> : (
         <ul className="space-y-2" data-testid="admin-newsletter-list">
           {visible.map((s) => (
-            <SubscriberRow key={s.id} s={s} checked={selected.has(s.id)} onToggle={() => toggle(s.id)} onRemove={setToRemove} />
+            <SubscriberRow key={s.id} s={s} checked={selected.has(s.id)} onToggle={() => toggle(s.id)} onRemove={setToRemove} onRestore={restore} onPurge={setToPurge} />
           ))}
         </ul>
       )}
@@ -102,7 +124,7 @@ export function SubscriberList({ subs, selected, setSelected, onChange }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Retirer cet abonné ?</AlertDialogTitle>
             <AlertDialogDescription>
-              {toRemove?.email} ne recevra plus aucune newsletter. Sa preuve de consentement et ses dates sont conservées. Cette action ne peut pas être annulée depuis l'interface.
+              {toRemove?.email} ne recevra plus aucune newsletter. Sa preuve de consentement et ses dates sont conservées. Vous pourrez le restaurer via « Afficher les retirés ».
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -111,6 +133,12 @@ export function SubscriberList({ subs, selected, setSelected, onChange }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!toPurge} testid="purge-subscriber"
+        title="Supprimer définitivement cet abonné ?"
+        description={`${toPurge?.email || ""} et sa preuve de consentement seront effacés. La même adresse pourra se réinscrire plus tard.`}
+        onCancel={() => setToPurge(null)} onConfirm={purge}
+      />
     </Card>
   );
 }

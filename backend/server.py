@@ -15,7 +15,9 @@ from starlette.responses import JSONResponse
 
 from database import db
 from auth import hash_password, verify_password, create_access_token, get_current_admin
-from newsletter_admin import router as newsletter_router, mark_interrupted_campaigns
+from newsletter_admin import (router as newsletter_router, mark_interrupted_campaigns, has_valid_consent,
+                              require_delete_confirmation, DeleteConfirm)
+from order_guard import order_deletion_blockers
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
@@ -330,9 +332,11 @@ async def subscribe_newsletter(request: Request, inp: NewsletterInput):
         "status": "subscribed", "unsubscribed_at": None,
     }
     existing = await db.newsletter.find_one({"email": email})
-    if existing and existing.get("status") != "unsubscribed":
+    if existing and existing.get("status") != "unsubscribed" and has_valid_consent(existing):
         return {"status": "already", "message": "Vous êtes déjà inscrit·e. Merci !"}
     if existing:
+        if not existing.get("unsubscribe_token"):
+            consent["unsubscribe_token"] = secrets.token_urlsafe(32)
         await db.newsletter.update_one({"email": email}, {"$set": consent})
     else:
         await db.newsletter.insert_one({
@@ -734,7 +738,39 @@ async def admin_me(admin=Depends(get_current_admin)):
 
 @api.get("/admin/orders")
 async def admin_orders(admin=Depends(get_current_admin)):
-    return await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    sids = [o.get("session_id") for o in orders if o.get("session_id")]
+    txs = await db.payment_transactions.find({"session_id": {"$in": sids}}, {"_id": 0}).to_list(5000)
+    for o in orders:
+        o["deletion_blockers"] = order_deletion_blockers(o, [t for t in txs if t["session_id"] == o.get("session_id")])
+        o["deletable"] = not o["deletion_blockers"]
+    return orders
+
+
+@api.post("/admin/orders/{order_id}/delete-permanently")
+async def admin_delete_order(order_id: str, inp: DeleteConfirm, admin=Depends(get_current_admin)):
+    require_delete_confirmation(inp)
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Commande introuvable.")
+    sid = order.get("session_id") or ""
+    txs = await db.payment_transactions.find({"session_id": sid}, {"_id": 0}).to_list(100) if sid else []
+    blockers = order_deletion_blockers(order, txs)
+    if blockers:
+        raise HTTPException(403, " ".join(blockers))
+    await db.payment_transactions.delete_many({"session_id": sid, "livemode": {"$ne": True}})
+    await db.orders.delete_one({"id": order_id})
+    logger.info(f"Admin deleted TEST order {order_id} and {len(txs)} test transaction(s)")
+    return {"ok": True, "deleted_transactions": len(txs)}
+
+
+@api.post("/admin/messages/{message_id}/delete-permanently")
+async def admin_delete_message(message_id: str, inp: DeleteConfirm, admin=Depends(get_current_admin)):
+    require_delete_confirmation(inp)
+    res = await db.contact_messages.delete_one({"id": message_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "Message introuvable.")
+    return {"ok": True}
 
 
 @api.get("/admin/messages")

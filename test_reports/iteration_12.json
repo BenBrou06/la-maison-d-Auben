@@ -1,0 +1,28 @@
+{
+  "summary": "Tested the admin deletion features in Preview (DRY_RUN, no emails, no Stripe calls). Features: reversible newsletter 'Retirer' with 'Restaurer', permanent subscriber deletion, single message deletion, deletion of TEST orders only (LIVE and ambiguous orders blocked), and the cleanup script's simulation/fingerprint check. Backend: test_admin_deletions.py 12/12, test_newsletter_admin.py 22/22 and test_compliance_rgpd.py 15/15 passed (49/49). Each suite was run on its own with -n 0. In the first combined run, 7 tests failed with 429 because the 10/min/IP rate limit on POST /api/newsletter was hit by the test suites themselves. This is a test-harness limit, not an app bug. Frontend (Playwright, fictif-ui12-* seeded rows): 20/20 checks passed. The Retirer dialog can be cancelled. After confirming, the row is hidden and dropped from the selection. 'Afficher les retirés' shows it with the Retiré status, the 'Exclu : Retiré de la liste' reason and no recipient checkbox. Restaurer brings back Inscrit, the Retirer button and the checkbox. The permanent-delete dialog keeps the submit button disabled until the exact word SUPPRIMER is typed (lowercase is refused), removes the row and its selection, and the input is empty when the dialog is reopened. On the orders tab, the LIVE order shows 'Protégée — …LIVE…' with no delete button. The TEST order is deleted with a toast reporting 1 transaction, and the LIVE order is kept. Deleting a message removes only that one.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/newsletter", "issue": "If an admin has removed a subscriber (removed=True) and that person unsubscribes and re-subscribes publicly, the record keeps removed=True and stays ineligible without any indication. This may be intended (the admin's decision wins), but it should be confirmed with the product owner. The alternative is to clear removed when the person explicitly re-subscribes."},
+      {"endpoint": "POST /api/admin/newsletter/send", "issue": "Still open from iteration_10: the 'sending' guard is not atomic."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_admin_deletions.py", "/app/backend/tests/test_newsletter_admin.py", "/app/backend/tests/test_compliance_rgpd.py", "/app/backend/tests/seed_deletions_ui.py", "/app/test_reports/pytest/pytest_it12_deletions.xml"],
+  "action_items": [
+    "Optional: decide whether an explicit public re-subscription should clear the admin 'removed' flag.",
+    "Optional: give the newsletter test suites a rate-limit bypass or run them sequentially more than 60 s apart (each one calls POST /api/newsletter many times)."
+  ],
+  "critical_code_review_comments": [
+    "admin_delete_order returns deleted_transactions=len(txs), while delete_many filters out livemode!=True. The guard makes these equal today, but returning res.deleted_count would be more accurate.",
+    "The order check and the delete are not atomic. The risk is negligible here (one admin and immutable session_id).",
+    "Preview has a real cs_test_ order (aubenbuyer2026@gmail.com) that is now offered for deletion as TEST. That is correct per the rules; it is mentioned only so it is not removed by mistake.",
+    "restore_subscriber has no 'removed' precondition, so restoring an active row only sets restored_at. This is harmless."
+  ],
+  "updated_files": ["/app/backend/tests/seed_deletions_ui.py"],
+  "success_rate": {"backend": "100% (49/49 when suites are run separately)", "frontend": "100% (20/20)"},
+  "seed_data_creation": "Seeded fictif-ui12-* rows (2 subscribers, 2 messages, 1 TEST order and 1 LIVE order with transactions) for the UI test, then removed them with python tests/seed_deletions_ui.py --clean. Verified that 0 fictif rows remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run each newsletter-related suite separately with -n 0 and wait about 65 s between them, because of the 10/min/IP rate limit on /api/newsletter. Seed UI rows with backend/tests/seed_deletions_ui.py and remove them with --clean. Never run cleanup_test_data.py with --apply. Do not delete the real Preview orders."
+}

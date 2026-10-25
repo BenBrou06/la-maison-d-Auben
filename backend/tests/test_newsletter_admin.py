@@ -22,7 +22,8 @@ CREATED_CAMPAIGNS = []
 
 def _ok(n):
     return dict(id=f"{P}{n}", email=f"{P}{n}@exemple-fictif.fr", status="subscribed", consent=True,
-                consent_at=NOW, consent_text_version=VER, unsubscribe_token=f"{P}tok-{n}", created_at=NOW)
+                consent_at=NOW, consent_text_version=VER, consent_text="Texte de consentement (fictif)",
+                unsubscribe_token=f"{P}tok-{n}", created_at=NOW)
 
 
 @pytest.fixture(scope="module", autouse=True)

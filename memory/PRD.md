@@ -95,3 +95,11 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - backend/cleanup_test_data.py (simulation par défaut, --apply) : supprime newsletter / messages (e-mail ou nom contenant « test ») et commandes dont l'e-mail contient « test » ET session cs_test_ (+ transactions de test associées) ; commandes non TEST signalées, jamais supprimées.
 - Preview nettoyé : 60 abonnés, 35 messages, 4 commandes Stripe TEST + 4 transactions supprimés ; 2 commandes conservées ; 6 transactions cs_live_ (initiated/pending, sans commande) conservées.
 - Tests : 37/37 backend (-n 0), iteration_11.json UI OK ; correctif retour à la ligne des e-mails sur mobile.
+
+## 2026-06 — Correctifs ciblés newsletter / suppressions / nettoyage (Preview, NON déployé)
+- subscribe_newsletter : preuve incomplète (consent, consent_at, version, texte) régularisée par nouvelle soumission consent:true ; preuve valide conservée (« déjà inscrit »). has_valid_consent partagé (newsletter_admin).
+- Abonnés : Retirer réversible (POST /admin/newsletter/{id}/restore), suppression définitive POST /{id}/delete-permanently {confirmation:"SUPPRIMER"} (réinscription possible, index unique email OK).
+- Messages : POST /admin/messages/{id}/delete-permanently. Commandes : POST /admin/orders/{id}/delete-permanently ; garde-fou order_guard.py (cs_test_ + transactions associées toutes cs_test_ + pas livemode ; sinon 403 avec raison) ; GET /admin/orders renvoie deletable/deletion_blockers. Aucun appel Stripe/e-mail.
+- cleanup_test_data.py : simulation détaillée + empreinte ; --apply exige --fingerprint identique ; inclut transactions TEST non payées sans commande ; LIVE/ambigu signalés.
+- Simulation Preview : 0 abonné/message/commande « test » ; 155 transactions TEST non payées sans commande ; 6 cs_live_ signalées. Empreinte c116096944db — EN ATTENTE de validation utilisateur. Prod DB non accessible.
+- Tests : test_admin_deletions.py 12/12, test_newsletter_admin.py 22/22, test_compliance_rgpd.py 15/15 (chaque fichier séparément, -n 0, rate limit newsletter 10/min) ; iteration_12.json UI 20/20.

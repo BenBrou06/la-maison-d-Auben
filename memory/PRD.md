@@ -103,3 +103,8 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - cleanup_test_data.py : simulation détaillée + empreinte ; --apply exige --fingerprint identique ; inclut transactions TEST non payées sans commande ; LIVE/ambigu signalés.
 - Simulation Preview : 0 abonné/message/commande « test » ; 155 transactions TEST non payées sans commande ; 6 cs_live_ signalées. Empreinte c116096944db — EN ATTENTE de validation utilisateur. Prod DB non accessible.
 - Tests : test_admin_deletions.py 12/12, test_newsletter_admin.py 22/22, test_compliance_rgpd.py 15/15 (chaque fichier séparément, -n 0, rate limit newsletter 10/min) ; iteration_12.json UI 20/20.
+
+## 2026-06 — Google Search Console (Preview OK, NON déployé)
+- frontend/public/google7a58bd32914ae521.html : fichier fourni, copié à l'identique (53 octets) → servi à /google7a58bd32914ae521.html.
+- frontend/public/index.html : <meta name="google-site-verification" content="%REACT_APP_GOOGLE_SITE_VERIFICATION%" /> (valeur via secret frontend, injectée au build CRA, une seule occurrence).
+- À vérifier après publication : présence du meta (sans %REACT_APP...%) et du fichier sur https://la-maison-dauben.com.

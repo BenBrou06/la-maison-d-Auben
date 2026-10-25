@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, NavLink } from "react-router-dom";
 import { Menu, X, ShoppingBag } from "lucide-react";
 import { Logo } from "@/components/Logo";
@@ -72,14 +73,15 @@ export const Header = () => {
         </div>
       </div>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — rendu dans <body> : le backdrop-blur du header (au défilement) piégeait ce panneau fixe */}
+      {createPortal(
       <div className={`fixed inset-0 z-[70] lg:hidden ${open ? "" : "pointer-events-none"}`}>
         <div
           className={`absolute inset-0 bg-[#1E3A2B]/40 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0"}`}
           onClick={() => setOpen(false)}
         />
         <div
-          className={`absolute right-0 top-0 flex h-full w-[86%] max-w-sm flex-col bg-[#FAF8F5] shadow-2xl transition-transform duration-300 ${
+          className={`absolute right-0 top-0 flex h-full w-[86%] max-w-sm flex-col overflow-y-auto bg-[#FAF8F5] shadow-2xl transition-transform duration-300 ${
             open ? "translate-x-0" : "translate-x-full"
           }`}
           data-testid="mobile-menu-panel"
@@ -106,20 +108,23 @@ export const Header = () => {
                 {n.label}
               </NavLink>
             ))}
-            <Link to="/contact" className="rounded-xl px-4 py-3.5 text-base font-medium text-[#2C332E] hover:bg-[#F2EDE4]">
+            <Link to="/contact" data-testid="mobile-nav-contact" className="rounded-xl px-4 py-3.5 text-base font-medium text-[#2C332E] hover:bg-[#F2EDE4]">
               {t("nav.contact")}
             </Link>
           </nav>
           <div className="mt-auto p-5">
             <Link
               to="/boutique"
+              data-testid="mobile-menu-shop-btn"
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-5 py-3.5 font-medium text-[#FAF8F5] hover:bg-[#3B6B4C]"
             >
               <ShoppingBag className="h-5 w-5" /> {t("cta.shop")}
             </Link>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
+      )}
     </header>
   );
 };

@@ -108,3 +108,7 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - frontend/public/google7a58bd32914ae521.html : fichier fourni, copié à l'identique (53 octets) → servi à /google7a58bd32914ae521.html.
 - frontend/public/index.html : <meta name="google-site-verification" content="%REACT_APP_GOOGLE_SITE_VERIFICATION%" /> (valeur via secret frontend, injectée au build CRA, une seule occurrence).
 - À vérifier après publication : présence du meta (sans %REACT_APP...%) et du fichier sur https://la-maison-dauben.com.
+
+## 2026-06 — Fix menu mobile transparent après défilement (Preview, NON déployé)
+- Cause : le header sticky reçoit backdrop-blur au défilement ; backdrop-filter crée un bloc conteneur pour ses descendants position:fixed → le tiroir mobile était confiné à la hauteur du header (70px), la page restait visible dessous.
+- Fix (components/Header.jsx) : tiroir rendu via createPortal dans document.body + overflow-y-auto sur le panneau ; data-testid mobile-nav-contact / mobile-menu-shop-btn. Design inchangé, desktop inchangé.

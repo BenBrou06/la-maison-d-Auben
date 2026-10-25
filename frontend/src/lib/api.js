@@ -41,6 +41,10 @@ export const adminNewsletter = () => api.get("/admin/newsletter").then((r) => r.
 export const adminNewsletterSettings = () => api.get("/admin/newsletter/settings").then((r) => r.data);
 export const adminNewsletterCampaigns = () => api.get("/admin/newsletter/campaigns").then((r) => r.data);
 export const adminNewsletterRemove = (id) => api.delete(`/admin/newsletter/${id}`).then((r) => r.data);
+export const adminNewsletterRestore = (id) => api.post(`/admin/newsletter/${id}/restore`).then((r) => r.data);
+export const adminNewsletterPurge = (id, confirmation) => api.post(`/admin/newsletter/${id}/delete-permanently`, { confirmation }).then((r) => r.data);
+export const adminDeleteMessage = (id, confirmation) => api.post(`/admin/messages/${id}/delete-permanently`, { confirmation }).then((r) => r.data);
+export const adminDeleteOrder = (id, confirmation) => api.post(`/admin/orders/${id}/delete-permanently`, { confirmation }).then((r) => r.data);
 export const adminNewsletterPreview = (payload) => api.post("/admin/newsletter/preview", payload).then((r) => r.data);
 export const adminNewsletterTest = (payload) => api.post("/admin/newsletter/test", payload).then((r) => r.data);
 export const adminNewsletterSend = (payload) => api.post("/admin/newsletter/send", payload).then((r) => r.data);

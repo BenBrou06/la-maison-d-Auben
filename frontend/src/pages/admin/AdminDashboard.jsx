@@ -7,8 +7,9 @@ import { Logo } from "@/components/Logo";
 import { Seo } from "@/components/Seo";
 import ContentPanel from "@/pages/admin/ContentPanel";
 import NewsletterPanel from "@/pages/admin/NewsletterPanel";
+import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import {
-  adminMe, adminOrders, adminMessages, getProducts,
+  adminMe, adminOrders, adminMessages, getProducts, adminDeleteMessage, adminDeleteOrder,
   adminUploadProductFile, adminDeleteProductFile, adminUpdateProduct, api,
 } from "@/lib/api";
 import { formatPrice } from "@/lib/i18n";
@@ -217,44 +218,86 @@ function ProductRow({ p, onUploadFile, onDeleteFile, onUploadImage, onSavePrice 
 }
 
 function OrdersPanel() {
+  const qc = useQueryClient();
   const { data: orders = [] } = useQuery({ queryKey: ["admin-orders"], queryFn: adminOrders });
+  const [toDelete, setToDelete] = useState(null);
+  const del = async (word) => {
+    try {
+      const r = await adminDeleteOrder(toDelete.id, word);
+      toast.success(`Commande TEST supprimée (${r.deleted_transactions} transaction(s) TEST).`);
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+    } catch (e) { toast.error(e.response?.data?.detail || "Suppression impossible."); }
+    setToDelete(null);
+  };
   return (
     <Panel title={`Commandes (${orders.length})`}>
       {orders.length === 0 ? <p className="text-sm text-[#626D66]">Aucune commande pour le moment.</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="admin-orders-table">
             <thead><tr className="border-b border-[#E2DDD5] text-left text-[#626D66]">
-              <th className="py-2 pr-4">Produit</th><th className="py-2 pr-4">Montant</th><th className="py-2 pr-4">E-mail</th><th className="py-2 pr-4">Statut</th><th className="py-2">Date</th>
+              <th className="py-2 pr-4">Produit</th><th className="py-2 pr-4">Montant</th><th className="py-2 pr-4">E-mail</th><th className="py-2 pr-4">Statut</th><th className="py-2 pr-4">Date</th><th className="py-2">Suppression</th>
             </tr></thead>
             <tbody>
               {orders.map((o) => (
-                <tr key={o.id} className="border-b border-[#E2DDD5]/60">
+                <tr key={o.id} className="border-b border-[#E2DDD5]/60" data-testid={`admin-order-row-${o.id}`}>
                   <td className="py-2.5 pr-4 font-medium text-[#1E3A2B]">{o.product_name}</td>
                   <td className="py-2.5 pr-4">{formatPrice(o.amount, o.currency)}</td>
                   <td className="py-2.5 pr-4 text-[#626D66]">{o.customer_email || "—"}</td>
                   <td className="py-2.5 pr-4"><span className="rounded-full bg-[#EAF0EC] px-2.5 py-1 text-xs font-medium text-[#3B6B4C]">{o.status}</span></td>
-                  <td className="py-2.5 text-[#626D66]">{new Date(o.created_at).toLocaleDateString("fr-FR")}</td>
+                  <td className="py-2.5 pr-4 text-[#626D66]">{new Date(o.created_at).toLocaleDateString("fr-FR")}</td>
+                  <td className="py-2.5 text-xs">
+                    {o.deletable ? (
+                      <button onClick={() => setToDelete(o)} className="inline-flex items-center gap-1 text-[#8A2A1F] hover:underline" data-testid={`order-delete-btn-${o.id}`}>
+                        <Trash2 className="h-3.5 w-3.5" /> Supprimer (TEST)
+                      </button>
+                    ) : (
+                      <span className="text-[#626D66]" title={(o.deletion_blockers || []).join(" ")} data-testid={`order-delete-blocked-${o.id}`}>
+                        Protégée — {(o.deletion_blockers || [])[0]}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      <ConfirmDeleteDialog
+        open={!!toDelete} testid="delete-order"
+        title="Supprimer cette commande TEST ?"
+        description={`Commande ${toDelete?.product_name || ""} — ${toDelete?.customer_email || ""}. Le serveur revérifie qu'elle et ses transactions sont en mode Stripe TEST ; aucune action Stripe ni e-mail n'est déclenché.`}
+        onCancel={() => setToDelete(null)} onConfirm={del}
+      />
     </Panel>
   );
 }
 
 function MessagesPanel() {
+  const qc = useQueryClient();
   const { data: msgs = [] } = useQuery({ queryKey: ["admin-messages"], queryFn: adminMessages });
+  const [toDelete, setToDelete] = useState(null);
+  const del = async (word) => {
+    try {
+      await adminDeleteMessage(toDelete.id, word);
+      toast.success("Message supprimé définitivement.");
+      qc.invalidateQueries({ queryKey: ["admin-messages"] });
+    } catch (e) { toast.error(e.response?.data?.detail || "Suppression impossible."); }
+    setToDelete(null);
+  };
   return (
     <Panel title={`Messages (${msgs.length})`}>
       {msgs.length === 0 ? <p className="text-sm text-[#626D66]">Aucun message pour le moment.</p> : (
         <div className="space-y-3" data-testid="admin-messages-list">
           {msgs.map((m) => (
-            <div key={m.id} className="rounded-xl border border-[#E2DDD5] bg-white p-4">
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-[#1E3A2B]">{m.name} <span className="text-sm font-normal text-[#626D66]">· {m.email}</span></p>
-                <span className="text-xs text-[#626D66]">{new Date(m.created_at).toLocaleDateString("fr-FR")}</span>
+            <div key={m.id} className="rounded-xl border border-[#E2DDD5] bg-white p-4" data-testid={`admin-message-${m.id}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium text-[#1E3A2B] [overflow-wrap:anywhere]">{m.name} <span className="text-sm font-normal text-[#626D66]">· {m.email}</span></p>
+                <span className="flex items-center gap-3 text-xs text-[#626D66]">
+                  {new Date(m.created_at).toLocaleDateString("fr-FR")}
+                  <button onClick={() => setToDelete(m)} className="inline-flex items-center gap-1 text-[#8A2A1F] hover:underline" data-testid={`message-delete-btn-${m.id}`}>
+                    <Trash2 className="h-3.5 w-3.5" /> Supprimer
+                  </button>
+                </span>
               </div>
               {m.subject && <p className="mt-1 text-sm font-medium text-[#3B6B4C]">{m.subject}</p>}
               <p className="mt-1 text-sm text-[#2C332E]">{m.message}</p>
@@ -262,6 +305,12 @@ function MessagesPanel() {
           ))}
         </div>
       )}
+      <ConfirmDeleteDialog
+        open={!!toDelete} testid="delete-message"
+        title="Supprimer ce message ?"
+        description={`Message de ${toDelete?.name || ""} (${toDelete?.email || ""}). Les autres messages ne sont pas touchés.`}
+        onCancel={() => setToDelete(null)} onConfirm={del}
+      />
     </Panel>
   );
 }

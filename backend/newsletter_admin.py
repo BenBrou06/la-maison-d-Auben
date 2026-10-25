@@ -31,12 +31,29 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def has_valid_consent(s: dict) -> bool:
+    return (s.get("consent") is True and bool(s.get("consent_at"))
+            and bool(s.get("consent_text_version")) and bool(s.get("consent_text")))
+
+
+DELETE_WORD = "SUPPRIMER"
+
+
+class DeleteConfirm(BaseModel):
+    confirmation: str
+
+
+def require_delete_confirmation(inp: DeleteConfirm):
+    if inp.confirmation != DELETE_WORD:
+        raise HTTPException(400, f"Confirmation invalide : tapez {DELETE_WORD}.")
+
+
 def ineligibility(s: dict):
     if s.get("removed"):
         return "Retiré de la liste"
     if s.get("status") == "unsubscribed":
         return "Désinscrit"
-    if s.get("consent") is not True or not s.get("consent_at") or not s.get("consent_text_version"):
+    if not has_valid_consent(s):
         return "Consentement non prouvé"
     if not s.get("unsubscribe_token"):
         return "Lien de désinscription manquant"
@@ -112,6 +129,7 @@ async def list_subscribers(admin=Depends(get_current_admin)):
     subs = await db.newsletter.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
     for s in subs:
         s["status"] = s.get("status", "subscribed")
+        s["consent_valid"] = has_valid_consent(s)
         s["ineligible_reason"] = ineligibility(s)
         s["eligible"] = s["ineligible_reason"] is None
         if s.get("unsubscribe_token"):
@@ -132,6 +150,23 @@ async def remove_subscriber(sub_id: str, admin=Depends(get_current_admin)):
         raise HTTPException(404, "Abonné introuvable.")
     if not sub.get("removed"):
         await db.newsletter.update_one({"id": sub_id}, {"$set": {"removed": True, "removed_at": now_iso()}})
+    return {"ok": True}
+
+
+@router.post("/{sub_id}/restore")
+async def restore_subscriber(sub_id: str, admin=Depends(get_current_admin)):
+    res = await db.newsletter.update_one({"id": sub_id}, {"$set": {"removed": False, "restored_at": now_iso()}})
+    if not res.matched_count:
+        raise HTTPException(404, "Abonné introuvable.")
+    return {"ok": True}
+
+
+@router.post("/{sub_id}/delete-permanently")
+async def purge_subscriber(sub_id: str, inp: DeleteConfirm, admin=Depends(get_current_admin)):
+    require_delete_confirmation(inp)
+    res = await db.newsletter.delete_one({"id": sub_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "Abonné introuvable.")
     return {"ok": True}
 
 

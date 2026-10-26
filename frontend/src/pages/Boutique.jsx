@@ -7,12 +7,14 @@ import { Reveal } from "@/components/Reveal";
 import { ProductCard } from "@/components/ProductCard";
 import { Icon } from "@/components/Icon";
 import { getProducts, getCategories } from "@/lib/api";
+import { useContent } from "@/lib/content";
 
 export default function Boutique() {
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("");
   const activeCat = params.get("categorie") || "all";
+  const c = useContent("shop");
 
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => getProducts() });
@@ -41,18 +43,18 @@ export default function Boutique() {
   return (
     <>
       <Seo
-        title="Boutique — La Maison d'Auben"
-        description="Découvrez tous nos outils numériques pour mieux organiser votre budget, vos voyages, votre maison et vos projets."
+        title={c.seo_title}
+        description={c.seo_description}
         path="/boutique"
       />
 
       <section className="border-b border-[#E2DDD5] bg-[#F2EDE4]">
         <div className="container-app py-12 sm:py-16">
           <Reveal>
-            <span className="eyebrow">Boutique</span>
-            <h1 className="mt-3 font-serif text-4xl font-bold text-[#1E3A2B] sm:text-5xl">Tous nos outils</h1>
+            <span className="eyebrow">{c.eyebrow}</span>
+            <h1 className="mt-3 font-serif text-4xl font-bold text-[#1E3A2B] sm:text-5xl">{c.title}</h1>
             <p className="mt-4 max-w-xl text-[#626D66]">
-              Des outils simples et beaux, conçus pour vous faciliter le quotidien. Filtrez par univers ou cherchez votre besoin.
+              {c.intro}
             </p>
           </Reveal>
         </div>
@@ -114,8 +116,8 @@ export default function Boutique() {
         {/* Grille produits */}
         {filtered.length === 0 ? (
           <div className="mt-16 text-center" data-testid="shop-empty-state">
-            <p className="font-serif text-xl text-[#1E3A2B]">Aucun outil ne correspond à votre recherche.</p>
-            <p className="mt-2 text-[#626D66]">Essayez un autre mot-clé ou une autre catégorie.</p>
+            <p className="font-serif text-xl text-[#1E3A2B]">{c.empty_title}</p>
+            <p className="mt-2 text-[#626D66]">{c.empty_text}</p>
           </div>
         ) : (
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-testid="shop-product-grid">

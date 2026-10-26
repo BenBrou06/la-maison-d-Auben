@@ -112,3 +112,17 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 ## 2026-06 — Fix menu mobile transparent après défilement (Preview, NON déployé)
 - Cause : le header sticky reçoit backdrop-blur au défilement ; backdrop-filter crée un bloc conteneur pour ses descendants position:fixed → le tiroir mobile était confiné à la hauteur du header (70px), la page restait visible dessous.
 - Fix (components/Header.jsx) : tiroir rendu via createPortal dans document.body + overflow-y-auto sur le panneau ; data-testid mobile-nav-contact / mobile-menu-shop-btn. Design inchangé, desktop inchangé.
+
+## 2026-06 — Ressources cohérentes + administration éditoriale complète (Preview, NON déployé)
+- Bug : GET /api/articles/{slug} renvoyait les produits liés sans with_purchasable → badge « Bientôt disponible » à tort. Corrigé à la source (server.py).
+- Architecture : valeurs par défaut = textes actuels dans frontend/src/content/schema.js (+ content/legal.js, données légales identiques octet par octet) ; MongoDB `site_content` {key, fields} ne stocke que les surcharges ; hook useContent(key) (lib/content.js) ; RichText (paragraphes, listes « - », liens [texte](url), aucun HTML).
+- Backend content_admin.py : GET /api/content (public), GET/PUT /api/admin/content/{key} (liste blanche de pages, partiel, null = retour au texte d'origine, anti-HTML/javascript:, validation images) ; GET/POST/PUT /api/admin/articles (brouillon/publication, slug validé + previous_slugs → redirect_to, SEO) ; GET/PUT /api/admin/faq (ajout/édition/suppression/ordre, ids uniques) ; GET /api/sitemap.xml dynamique (robots.txt pointe dessus). Anciennes routes POST/PUT articles et POST faq supprimées (remplacées).
+- Seed : articles/FAQ de démo insérés une seule fois (collection seed_markers) → un article renommé ou une question supprimée n'est jamais recréé.
+- Admin : onglets Pages, Articles, FAQ (pages/admin/site/*) ; « Contenu » renommé « Contenu produits ».
+- Tests : test_site_content.py + test_site_content_edge.py 29/29, compliance 15/15, deletions 12/12, newsletter 22/22 ; iteration_13.json UI OK, correctifs appliqués ensuite (produit phare, brouillon admin, slug, retry 404, doublons FAQ, //images, liste blanche).
+
+## 2026-06 — Suppression d'articles (Preview, NON déployé)
+- Route existante réutilisée : DELETE /api/admin/articles/{slug} (auth admin) — exige désormais {confirmation:"SUPPRIMER"} (400 sinon), 404 si absent, delete_one sur le seul slug.
+- Comportement : suppression réelle en base ; l'adresse et ses previous_slugs → 404 « Article introuvable » (pas de redirection) ; retiré du sitemap dynamique ; articles de démo non recréés (seed_markers).
+- UI ArticlesPanel : bouton « Supprimer l'article » + ConfirmDeleteDialog (titre affiché) ; liste actualisée, sélection du 1er article ou état vide ; en cas d'erreur, dialogue et article conservés.
+- Tests : test_site_content.py (TestArticleDeletion) + edge 30/30 ; compliance 15/15, deletions 12/12, newsletter 22/22 ; parcours UI annuler/supprimer vérifié.

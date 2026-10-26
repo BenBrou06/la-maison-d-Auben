@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 13 tested editorial content management in Preview: Pages (site_content overrides), Articles (draft/publish/rename + redirect), FAQ (edit/reorder/add/delete), the dynamic sitemap, legal pages moved to content/legal.js, and product availability consistency. Backend: test_site_content.py 9/9 and the new test_site_content_edge.py 20/20 passed, and the test_compliance_rgpd.py regression passed. Frontend (Playwright, desktop + mobile): all 12 public pages render their default texts with correct titles, and the CGV page has 16 sections with no text lost (a fragment diff of the old Legal.jsx found none missing). In Admin > Pages, a partial save is shown publicly, 'Texte d'origine' + save brings back the default, Annuler works, and editing a CGV section shows on /cgv and resets correctly. In Admin > Articles: draft created (hidden publicly), published (SEO title, CTA and related product OK), listed, renamed with a confirm dialog and the old URL redirected, invalid slug shows a toast. In Admin > FAQ: reorder, edit, add and delete (with confirm) all show publicly; empty-answer validation works. No JS page errors. A few minor consistency and robustness issues were found (below). No product, price, Stripe or order data was touched, and all test data was cleaned up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/faq", "issue": "Duplicate ids in items are accepted. Both items upsert the same document, so one question is silently lost (sending 2 items with the same id left only 1 FAQ). Should return 400 on duplicate ids."},
+      {"endpoint": "PUT /api/admin/articles/{slug} (cover_image)", "issue": "The protocol-relative URL '//evil.example/x.png' is accepted (it matches the local-path regex ^/?[\\w\\-./]+$). mediaUrl() then loads it as a third-party image, which goes against the self-hosting/RGPD goal. Reject paths starting with '//'. Image fields in /admin/content (hero_image, about image) get no URL or path validation at all, only the HTML check."},
+      {"endpoint": "PUT /api/admin/content/{key}", "issue": "Any key matching [a-z0-9-] is accepted (e.g. 'fictif-e13-unknown' returns 200), so junk documents can be stored. Consider a whitelist of known page keys."},
+      {"endpoint": "GET /sitemap.xml (static frontend/public/sitemap.xml)", "issue": "robots.txt now points to /api/sitemap.xml, but the old static /sitemap.xml is still served and will go stale (no new articles). If it was submitted to Search Console, it should be removed or replaced, or Search Console updated."},
+      {"endpoint": "seed() _seed_once", "issue": "The marker is inserted before the article/FAQ insert, so if the insert fails it is never retried. Also, on the first deploy to prod, a seed article/FAQ that was deleted before this release is recreated once (no marker exists yet). This is an edge case; consider pre-creating markers for seed slugs already missing in prod."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Home featured product (featured_slug -> coming_soon product)", "issue": "When the admin picks a 'bientôt disponible' product (the select offers it), the home featured block shows no price and no 'Bientôt disponible' badge. The hero secondary button keeps the default label 'Découvrir Budget mensuel' while linking to /boutique/budget-couple, and the hero caption stays 'Budget mensuel'. Text and link do not match. Fix: derive the default labels from featured.name, and show a coming-soon badge when !featured.purchasable (or forbid non-purchasable products in the select).", "selector": "[data-testid='hero-secondary-cta'], [data-testid='featured-cta']", "priority": "MEDIUM"},
+      {"component": "Home featured fallback", "issue": "The fallback uses products.find(p => p.status === 'available') instead of p.purchasable, which is inconsistent with the server-computed availability used everywhere else.", "selector": "Home.jsx line 24", "priority": "LOW"},
+      {"component": "SitePagesPanel PageForm", "issue": "useEffect(() => setDraft(effective), [effective]) resets the draft when the admin-content query finishes loading. Text typed in the first moments after opening the tab is silently lost (seen on mobile). Switching to another page in the left nav also drops unsaved edits without a warning.", "selector": "[data-testid='content-page-form-*']", "priority": "LOW"},
+      {"component": "ArticlesPanel save", "issue": "The window.confirm for a slug change appears before validation, so an invalid slug ('Pas Bon') asks for confirmation and then fails with a 400 toast. The block type is a free-text input ('p' or 'h2'); a select would prevent typos (anything other than 'h2' silently becomes 'p').", "selector": "[data-testid='article-save-btn'], [data-testid='article-blocks-N-type']", "priority": "LOW"},
+      {"component": "Article page 404", "issue": "Opening an unpublished or unknown article shows 'Chargement…' for about 7.5 s before 'Article introuvable.' because react-query retries the 404 three times. Set retry:false (or skip retries on 404) for getArticle.", "selector": "/ressources/:slug", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Preview data", "issues": ["The budget-couple product description in the Preview DB is 'desc T1' (left over from an earlier test, not from this iteration). It shows on /boutique/budget-couple and in the home featured block if that product is selected. Restore it from seed_data (prod is not affected unless it is copied there)."]},
+      {"screen": "Footer newsletter", "issues": ["The consent checkbox text (very small, light grey on dark green) has low contrast. This was already the case before this iteration."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_site_content.py",
+    "/app/backend/tests/test_site_content_edge.py",
+    "/app/test_reports/pytest/pytest_it13_site_content.xml",
+    "/app/test_reports/pytest/pytest_it13_edge.xml"
+  ],
+  "action_items": [
+    "Home: when featured_slug points to a non-purchasable product, show a 'Bientôt disponible' state and derive hero_cta_secondary/hero_caption from featured.name (or forbid that choice). Use purchasable in the fallback.",
+    "PUT /admin/faq: reject duplicate ids with 400.",
+    "Reject protocol-relative '//' image paths for articles, and validate image fields in site_content the same way.",
+    "Remove or replace the stale static frontend/public/sitemap.xml now that robots.txt points to /api/sitemap.xml.",
+    "Optional: whitelist content keys; skip retries on article 404; validate the slug before the confirm dialog; use a select for the block type; keep the draft in PageForm when the query loads (initialise the draft only once, or only when nothing is dirty).",
+    "Optional: restore the Preview budget-couple description ('desc T1') from seed_data.",
+    "Optional: test_lamaisondauben.py is a legacy suite that is now out of date (expects 7.99, checkout without withdrawal_waiver, and hits the newsletter rate limit). Update or retire it; its 11 failures are not regressions."
+  ],
+  "critical_code_review_comments": [
+    "content_admin.py is clean: Pydantic models, partial $set/$unset, _id excluded, HTML/javascript: refused, slug clash check against previous_slugs, and the redirect only for published articles. The rename chain A->B->C->A works with no redirect loop (verified).",
+    "Editing any legal section stores the whole sections array as a snapshot. Later code changes to the legal defaults (e.g. WITHDRAWAL_CONSENT_TEXT) will no longer reach that page, and 'Dernière mise à jour' is not bumped automatically. Say this in the admin hint.",
+    "The legacy DELETE /api/admin/articles/{slug} and DELETE /api/admin/faq/{fid} are still in server.py with no UI. This is harmless, and the seed markers stop them being recreated.",
+    "The public /api/content response does not expose updated_by (admin e-mail). Verified."
+  ],
+  "updated_files": ["/app/backend/tests/test_site_content_edge.py"],
+  "success_rate": {"backend": "100% (29/29 new-feature tests + compliance regression); minor validation gaps reported", "frontend": "~90% (all core flows pass; 1 medium + 4 low issues)"},
+  "test_credentials": "admin@lamaisondauben.fr / Auben2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None kept. Temporary fictif-ui13-*/fictif-e13-* articles, FAQ edits, site_content overrides, and the contact/newsletter rows created by the legacy suite run were all removed or restored. The FAQ was restored from a snapshot (5 items).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the test_site_content*.py files with -n 0 (test_site_content.py restarts the backend). Do not run test_lamaisondauben.py: it is out of date and hits the newsletter rate limit (10/min). To retest the home featured issue: PUT /api/admin/content/home {fields:{featured_slug:'budget-couple'}}, check / (no badge; hero button text is wrong), then reset with featured_slug:null. Nothing was deployed and prod was not touched."
+}

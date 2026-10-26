@@ -1,19 +1,22 @@
 import React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Clock, ArrowLeft, ArrowRight } from "lucide-react";
 import { Seo } from "@/components/Seo";
 import { Reveal } from "@/components/Reveal";
 import { ProductCard } from "@/components/ProductCard";
-import { getArticle, getCategories } from "@/lib/api";
+import { getArticle, getCategories, mediaUrl } from "@/lib/api";
+import { useContent } from "@/lib/content";
 
 export default function Article() {
   const { slug } = useParams();
-  const { data: article, isLoading, isError } = useQuery({ queryKey: ["article", slug], queryFn: () => getArticle(slug) });
+  const { data: article, isLoading, isError } = useQuery({ queryKey: ["article", slug], queryFn: () => getArticle(slug), retry: false });
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const catMap = Object.fromEntries(categories.map((c) => [c.slug, c]));
+  const rc = useContent("resources");
 
   if (isLoading) return <div className="container-app py-24 text-center text-[#626D66]">Chargement…</div>;
+  if (article?.redirect_to) return <Navigate to={`/ressources/${article.redirect_to}`} replace />;
   if (isError || !article) return <div className="container-app py-24 text-center text-[#626D66]">Article introuvable.</div>;
 
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "";
@@ -21,7 +24,7 @@ export default function Article() {
 
   return (
     <>
-      <Seo title={`${article.title} — La Maison d'Auben`} description={article.excerpt} image={article.cover_image} path={`/ressources/${slug}`} />
+      <Seo title={article.seo_title || `${article.title} — La Maison d'Auben`} description={article.seo_description || article.excerpt} image={article.cover_image ? mediaUrl(article.cover_image) : ""} path={`/ressources/${slug}`} />
 
       <article className="container-app mx-auto max-w-3xl py-10 sm:py-14">
         <Link to="/ressources" className="inline-flex items-center gap-1.5 text-sm text-[#626D66] hover:text-[#1E3A2B]"><ArrowLeft className="h-4 w-4" /> Toutes les ressources</Link>
@@ -36,7 +39,7 @@ export default function Article() {
           <h1 className="mt-4 font-serif text-4xl font-bold leading-tight text-[#1E3A2B] sm:text-5xl">{article.title}</h1>
         </Reveal>
         <Reveal delay={0.1}>
-          <img src={article.cover_image} alt={article.title} className="mt-8 aspect-[16/9] w-full rounded-2xl object-cover" />
+          <img src={mediaUrl(article.cover_image)} alt={article.title} className="mt-8 aspect-[16/9] w-full rounded-2xl object-cover" />
         </Reveal>
 
         <div className="prose mt-10 max-w-none">
@@ -58,7 +61,7 @@ export default function Article() {
 
       {related.length > 0 && (
         <section className="container-app py-10 sm:py-16">
-          <h2 className="font-serif text-2xl font-semibold text-[#1E3A2B]">À découvrir</h2>
+          <h2 className="font-serif text-2xl font-semibold text-[#1E3A2B]">{rc.related_title}</h2>
           <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {related.map((p) => <ProductCard key={p.slug} product={p} category={catMap[p.category_slug]} />)}
           </div>

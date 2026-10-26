@@ -18,6 +18,7 @@ from auth import hash_password, verify_password, create_access_token, get_curren
 from newsletter_admin import (router as newsletter_router, mark_interrupted_campaigns, has_valid_consent,
                               require_delete_confirmation, DeleteConfirm)
 from order_guard import order_deletion_blockers
+from content_admin import router as content_router
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
@@ -213,26 +214,6 @@ class ProductUpdateInput(BaseModel):
     main_image: Optional[str] = None
 
 
-class ArticleInput(BaseModel):
-    slug: Optional[str] = None
-    title: str
-    category: str = ""
-    excerpt: str = ""
-    read_time: int = 5
-    cover_image: str = ""
-    related_product_slugs: List[str] = []
-    content: List[dict] = []
-    cta_text: str = ""
-    published_at: Optional[str] = None
-
-
-class FaqInput(BaseModel):
-    id: Optional[str] = None
-    question: str
-    answer: str
-    order: int = 100
-
-
 # --------------------------------------------------------------------------- #
 # Public content
 # --------------------------------------------------------------------------- #
@@ -294,7 +275,7 @@ async def get_product(slug: str):
 
 @api.get("/articles")
 async def get_articles(category: Optional[str] = None):
-    query = {}
+    query = {"published": {"$ne": False}}
     if category:
         query["category"] = category
     items = await db.articles.find(query, {"_id": 0}).sort("published_at", -1).to_list(200)
@@ -303,14 +284,17 @@ async def get_articles(category: Optional[str] = None):
 
 @api.get("/articles/{slug}")
 async def get_article(slug: str):
-    a = await db.articles.find_one({"slug": slug}, {"_id": 0})
+    a = await db.articles.find_one({"slug": slug, "published": {"$ne": False}}, {"_id": 0})
     if not a:
+        moved = await db.articles.find_one({"previous_slugs": slug, "published": {"$ne": False}}, {"_id": 0, "slug": 1})
+        if moved:
+            return {"redirect_to": moved["slug"]}
         raise HTTPException(404, "Article introuvable")
     related = []
     for ps in a.get("related_product_slugs", []):
         p = await db.products.find_one({"slug": ps}, {"_id": 0})
         if p:
-            related.append(p)
+            related.append(with_purchasable(p))
     a["related_products"] = related
     return a
 
@@ -913,40 +897,15 @@ async def upload_image(file: UploadFile = File(...), admin=Depends(get_current_a
     return {"status": "ok", "path": path, "url": f"/api/media/{path}"}
 
 
-@api.post("/admin/articles")
-async def create_article(inp: ArticleInput, admin=Depends(get_current_admin)):
-    data = inp.model_dump()
-    data["slug"] = data.get("slug") or data["title"].lower().replace(" ", "-")
-    data["published_at"] = data.get("published_at") or now_iso()
-    if await db.articles.find_one({"slug": data["slug"]}):
-        raise HTTPException(400, "Slug déjà utilisé")
-    await db.articles.insert_one(data)
-    return clean(await db.articles.find_one({"slug": data["slug"]}))
-
-
-@api.put("/admin/articles/{slug}")
-async def update_article(slug: str, inp: ArticleInput, admin=Depends(get_current_admin)):
-    data = {k: v for k, v in inp.model_dump().items() if v is not None}
-    data.pop("slug", None)
-    await db.articles.update_one({"slug": slug}, {"$set": data})
-    a = await db.articles.find_one({"slug": slug}, {"_id": 0})
-    if not a:
-        raise HTTPException(404, "Article introuvable")
-    return a
-
-
 @api.delete("/admin/articles/{slug}")
-async def delete_article(slug: str, admin=Depends(get_current_admin)):
-    await db.articles.delete_one({"slug": slug})
+async def delete_article(slug: str, inp: DeleteConfirm, admin=Depends(get_current_admin)):
+    # Suppression définitive d'un seul article (et de ses anciennes adresses previous_slugs, qui deviennent 404).
+    require_delete_confirmation(inp)
+    res = await db.articles.delete_one({"slug": slug})
+    if not res.deleted_count:
+        raise HTTPException(404, "Article introuvable.")
+    logger.info(f"Admin deleted article {slug}")
     return {"status": "ok"}
-
-
-@api.post("/admin/faq")
-async def create_faq(inp: FaqInput, admin=Depends(get_current_admin)):
-    data = inp.model_dump()
-    data["id"] = data.get("id") or str(uuid.uuid4())
-    await db.faq.update_one({"id": data["id"]}, {"$set": data}, upsert=True)
-    return clean(await db.faq.find_one({"id": data["id"]}))
 
 
 @api.delete("/admin/faq/{fid}")
@@ -958,6 +917,17 @@ async def delete_faq(fid: str, admin=Depends(get_current_admin)):
 # --------------------------------------------------------------------------- #
 # Startup / seed
 # --------------------------------------------------------------------------- #
+async def _seed_once(marker: str, coll, exists_query: dict) -> bool:
+    """True si le contenu de démo doit être inséré (jamais inséré auparavant et absent)."""
+    if await db.seed_markers.find_one({"key": marker}):
+        return False
+    return not await coll.find_one(exists_query)
+
+
+async def _mark_seeded(marker: str):
+    await db.seed_markers.update_one({"key": marker}, {"$setOnInsert": {"key": marker, "at": now_iso()}}, upsert=True)
+
+
 async def seed():
     # Settings
     await db.settings.update_one({"id": "site"}, {"$set": seed_data.SETTINGS}, upsert=True)
@@ -994,13 +964,18 @@ async def seed():
         fill = {f: p[f] for f in content_fields if f in p and not doc.get(f)}
         if fill:
             await db.products.update_one({"slug": p["slug"]}, {"$set": fill})
-    # Articles
+    # Articles & FAQ : insérés une seule fois (marqueur), pour ne jamais recréer un article
+    # renommé ni une question supprimée depuis l'administration.
     for a in seed_data.ARTICLES:
-        await db.articles.update_one({"slug": a["slug"]}, {"$setOnInsert": {**a}}, upsert=True)
+        if await _seed_once(f"article:{a['slug']}", db.articles, {"$or": [{"slug": a["slug"]}, {"previous_slugs": a["slug"]}]}):
+            await db.articles.insert_one({**a})
+        await _mark_seeded(f"article:{a['slug']}")
     # FAQ
     for i, f in enumerate(seed_data.GLOBAL_FAQ):
         fid = f"faq-{i+1}"
-        await db.faq.update_one({"id": fid}, {"$setOnInsert": {**f, "id": fid}}, upsert=True)
+        if await _seed_once(f"faq:{fid}", db.faq, {"id": fid}):
+            await db.faq.insert_one({**f, "id": fid})
+        await _mark_seeded(f"faq:{fid}")
     # Fichier Excel par défaut (vrai fichier fourni) pour Budget mensuel.
     bm = await db.products.find_one({"slug": "budget-mensuel"})
     if bm and not bm.get("download_storage_path"):
@@ -1052,6 +1027,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 api.include_router(newsletter_router)
+api.include_router(content_router)
 app.include_router(api)
 
 # CORS : configurable via CORS_ORIGINS. "*" (ou vide) = reflet de l'origine (preview/dev).

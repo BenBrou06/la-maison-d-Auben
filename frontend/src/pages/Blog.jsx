@@ -4,21 +4,23 @@ import { useQuery } from "@tanstack/react-query";
 import { Clock, ArrowRight } from "lucide-react";
 import { Seo } from "@/components/Seo";
 import { Reveal } from "@/components/Reveal";
-import { getArticles } from "@/lib/api";
+import { getArticles, mediaUrl } from "@/lib/api";
+import { useContent } from "@/lib/content";
 
 export default function Blog() {
   const { data: articles = [] } = useQuery({ queryKey: ["articles"], queryFn: () => getArticles() });
   const [featured, ...rest] = articles;
+  const c = useContent("resources");
 
   return (
     <>
-      <Seo title="Ressources — La Maison d'Auben" description="Nos conseils pour mieux organiser votre budget, vos voyages, votre maison et vos projets." path="/ressources" />
+      <Seo title={c.seo_title} description={c.seo_description} path="/ressources" />
       <section className="border-b border-[#E2DDD5] bg-[#F2EDE4]">
         <div className="container-app py-12 sm:py-16">
           <Reveal>
-            <span className="eyebrow">Ressources</span>
-            <h1 className="mt-3 font-serif text-4xl font-bold text-[#1E3A2B] sm:text-5xl">Nos conseils & idées</h1>
-            <p className="mt-4 max-w-xl text-[#626D66]">Des articles simples et concrets pour mieux vous organiser au quotidien.</p>
+            <span className="eyebrow">{c.eyebrow}</span>
+            <h1 className="mt-3 font-serif text-4xl font-bold text-[#1E3A2B] sm:text-5xl">{c.title}</h1>
+            <p className="mt-4 max-w-xl text-[#626D66]">{c.intro}</p>
           </Reveal>
         </div>
       </section>
@@ -28,13 +30,13 @@ export default function Blog() {
           <Reveal>
             <Link to={`/ressources/${featured.slug}`} data-testid={`article-${featured.slug}`} className="group grid overflow-hidden rounded-3xl border border-[#E2DDD5] bg-white lg:grid-cols-2">
               <div className="aspect-[16/10] overflow-hidden lg:aspect-auto">
-                <img src={featured.cover_image} alt={featured.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <img src={mediaUrl(featured.cover_image)} alt={featured.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
               </div>
               <div className="flex flex-col justify-center p-8 sm:p-12">
                 <span className="text-xs font-semibold uppercase tracking-wider text-[#3B6B4C]">{featured.category}</span>
                 <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B]">{featured.title}</h2>
                 <p className="mt-4 text-[#626D66]">{featured.excerpt}</p>
-                <span className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-[#1E3A2B]">Lire l'article <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span>
+                <span className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-[#1E3A2B]">{c.read_more} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span>
               </div>
             </Link>
           </Reveal>
@@ -45,7 +47,7 @@ export default function Blog() {
             <Reveal key={a.slug} delay={(i % 3) * 0.06}>
               <Link to={`/ressources/${a.slug}`} data-testid={`article-${a.slug}`} className="group card-soft block h-full overflow-hidden">
                 <div className="aspect-[16/10] overflow-hidden">
-                  <img src={a.cover_image} alt={a.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img src={mediaUrl(a.cover_image)} alt={a.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 </div>
                 <div className="p-6">
                   <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-[#3B6B4C]">

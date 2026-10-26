@@ -3,18 +3,21 @@ import { useQuery } from "@tanstack/react-query";
 import { Seo } from "@/components/Seo";
 import { Reveal } from "@/components/Reveal";
 import { getFaq } from "@/lib/api";
+import { useContent } from "@/lib/content";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export default function Faq() {
   const { data: faq = [] } = useQuery({ queryKey: ["faq"], queryFn: getFaq });
+  const c = useContent("faq");
   return (
     <>
-      <Seo title="FAQ — La Maison d'Auben" description="Questions fréquentes sur nos produits numériques, le paiement et le téléchargement." path="/faq" />
+      <Seo title={c.seo_title} description={c.seo_description} path="/faq" />
       <section className="border-b border-[#E2DDD5] bg-[#F2EDE4]">
         <div className="container-app py-12 sm:py-16">
           <Reveal>
-            <span className="eyebrow">FAQ</span>
-            <h1 className="mt-3 font-serif text-4xl font-bold text-[#1E3A2B] sm:text-5xl">Vos questions, nos réponses</h1>
+            <span className="eyebrow">{c.eyebrow}</span>
+            <h1 className="mt-3 font-serif text-4xl font-bold text-[#1E3A2B] sm:text-5xl">{c.title}</h1>
+            {c.intro && <p className="mt-4 max-w-xl text-[#626D66]" data-testid="faq-intro">{c.intro}</p>}
           </Reveal>
         </div>
       </section>

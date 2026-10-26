@@ -26,6 +26,7 @@ export const adminSaveContent = (key, fields) => api.put(`/admin/content/${key}`
 export const adminArticles = () => api.get("/admin/articles").then((r) => r.data);
 export const adminCreateArticle = (payload) => api.post("/admin/articles", payload).then((r) => r.data);
 export const adminUpdateArticle = (slug, payload) => api.put(`/admin/articles/${slug}`, payload).then((r) => r.data);
+export const adminDeleteArticle = (slug, confirmation) => api.delete(`/admin/articles/${slug}`, { data: { confirmation } }).then((r) => r.data);
 export const adminFaq = () => api.get("/admin/faq").then((r) => r.data);
 export const adminSaveFaq = (items) => api.put("/admin/faq", { items }).then((r) => r.data);
 export const subscribeNewsletter = (payload) => api.post("/newsletter", payload).then((r) => r.data);

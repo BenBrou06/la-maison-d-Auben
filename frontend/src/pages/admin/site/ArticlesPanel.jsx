@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Save, ExternalLink } from "lucide-react";
-import { adminArticles, adminCreateArticle, adminUpdateArticle, getProducts } from "@/lib/api";
+import { Plus, Save, ExternalLink, Trash2 } from "lucide-react";
+import { adminArticles, adminCreateArticle, adminUpdateArticle, adminDeleteArticle, getProducts } from "@/lib/api";
 import { ImageInput, ListEditor, inputCls, primaryCls, btnCls } from "@/pages/admin/site/fields";
+import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 
 const EMPTY = { title: "", slug: "", category: "", excerpt: "", cover_image: "", published_at: new Date().toISOString().slice(0, 10),
   read_time: 3, content: [], cta_text: "", related_product_slugs: [], published: false, seo_title: "", seo_description: "" };
@@ -24,11 +25,22 @@ function Field({ label, children, hint }) {
   );
 }
 
-function ArticleForm({ article, products, onSaved }) {
+function ArticleForm({ article, products, onSaved, onDeleted }) {
   const isNew = !article;
   const initial = isNew ? EMPTY : toForm(article);
   const [f, setF] = useState(initial);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const remove = async (word) => {
+    try {
+      await adminDeleteArticle(article.slug, word);
+      toast.success(`Article « ${article.title} » supprimé.`);
+      setConfirmDelete(false);
+      onDeleted(article.slug);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Suppression impossible. L'article n'a pas été supprimé.");
+    }
+  };
   useEffect(() => setF(isNew ? EMPTY : toForm(article)), [article, isNew]);
   const set = (k) => (v) => setF((cur) => ({ ...cur, [k]: v }));
   const ev = (k) => (e) => set(k)(e.target.value);
@@ -86,7 +98,20 @@ function ArticleForm({ article, products, onSaved }) {
       <div className="flex flex-wrap gap-3 border-t border-[#E2DDD5] pt-4">
         <button onClick={save} disabled={saving || !f.title.trim() || !f.slug.trim()} className={primaryCls} data-testid="article-save-btn"><Save className="h-4 w-4" /> {isNew ? "Créer l'article" : "Enregistrer"}</button>
         {!isNew && f.published && <a href={`/ressources/${article.slug}`} target="_blank" rel="noopener noreferrer" className={btnCls} data-testid="article-view-btn"><ExternalLink className="h-3.5 w-3.5" /> Voir sur le site</a>}
+        {!isNew && (
+          <button type="button" onClick={() => setConfirmDelete(true)} className={`${btnCls} ml-auto text-[#8A2A1F]`} data-testid="article-delete-btn">
+            <Trash2 className="h-3.5 w-3.5" /> Supprimer l'article
+          </button>
+        )}
       </div>
+      {!isNew && (
+        <ConfirmDeleteDialog
+          open={confirmDelete} testid="delete-article"
+          title={`Supprimer l'article « ${article.title} » ?`}
+          description="L'article sera effacé de la base de données. Son adresse (et ses anciennes adresses) afficheront « Article introuvable » et il disparaîtra du sitemap. Les autres articles ne sont pas touchés."
+          onCancel={() => setConfirmDelete(false)} onConfirm={remove}
+        />
+      )}
     </div>
   );
 }
@@ -100,6 +125,11 @@ export default function ArticlesPanel() {
   const onSaved = (slug) => {
     ["admin-articles", "articles", "article"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     setSel(slug);
+  };
+  const onDeleted = (slug) => {
+    qc.setQueryData(["admin-articles"], (list = []) => list.filter((a) => a.slug !== slug));
+    ["admin-articles", "articles", "article"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    setSel(null);
   };
   return (
     <div className="grid gap-6 lg:grid-cols-[280px_1fr]" data-testid="articles-admin-panel">
@@ -115,7 +145,9 @@ export default function ArticlesPanel() {
       </div>
       <div className="card-soft p-6">
         <h2 className="mb-5 font-serif text-xl font-semibold text-[#1E3A2B]">{sel === "new" ? "Nouvel article" : current?.title}</h2>
-        {(sel === "new" || current) && <ArticleForm key={sel === "new" ? "new" : current.slug} article={sel === "new" ? null : current} products={products} onSaved={onSaved} />}
+        {(sel === "new" || current)
+          ? <ArticleForm key={sel === "new" ? "new" : current.slug} article={sel === "new" ? null : current} products={products} onSaved={onSaved} onDeleted={onDeleted} />
+          : <p className="text-sm text-[#626D66]" data-testid="articles-empty">Aucun article. Cliquez sur « Nouvel article » pour en créer un.</p>}
       </div>
     </div>
   );

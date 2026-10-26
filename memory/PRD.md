@@ -120,3 +120,9 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Seed : articles/FAQ de démo insérés une seule fois (collection seed_markers) → un article renommé ou une question supprimée n'est jamais recréé.
 - Admin : onglets Pages, Articles, FAQ (pages/admin/site/*) ; « Contenu » renommé « Contenu produits ».
 - Tests : test_site_content.py + test_site_content_edge.py 29/29, compliance 15/15, deletions 12/12, newsletter 22/22 ; iteration_13.json UI OK, correctifs appliqués ensuite (produit phare, brouillon admin, slug, retry 404, doublons FAQ, //images, liste blanche).
+
+## 2026-06 — Suppression d'articles (Preview, NON déployé)
+- Route existante réutilisée : DELETE /api/admin/articles/{slug} (auth admin) — exige désormais {confirmation:"SUPPRIMER"} (400 sinon), 404 si absent, delete_one sur le seul slug.
+- Comportement : suppression réelle en base ; l'adresse et ses previous_slugs → 404 « Article introuvable » (pas de redirection) ; retiré du sitemap dynamique ; articles de démo non recréés (seed_markers).
+- UI ArticlesPanel : bouton « Supprimer l'article » + ConfirmDeleteDialog (titre affiché) ; liste actualisée, sélection du 1er article ou état vide ; en cas d'erreur, dialogue et article conservés.
+- Tests : test_site_content.py (TestArticleDeletion) + edge 30/30 ; compliance 15/15, deletions 12/12, newsletter 22/22 ; parcours UI annuler/supprimer vérifié.

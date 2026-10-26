@@ -158,6 +158,32 @@ class TestFaq:
         assert requests.put(f"{API}/admin/faq", headers=h, json={"items": [{"question": "<b>x</b>", "answer": "y"}]}).status_code == 400
 
 
+class TestArticleDeletion:
+    def test_delete_requires_confirmation_and_only_removes_target(self, h):
+        keep, gone = P + "garde", P + "supprime"
+        for s in (keep, gone):
+            assert requests.post(f"{API}/admin/articles", headers=h, json={"title": s, "slug": s, "published": True,
+                                 "content": [{"type": "p", "text": "x"}]}).status_code == 200
+        assert requests.put(f"{API}/admin/articles/{gone}", headers=h, json={"slug": gone + "-v2"}).status_code == 200
+        gone2 = gone + "-v2"
+        before = mdb.articles.count_documents({})
+        assert requests.delete(f"{API}/admin/articles/{gone2}", json={"confirmation": "SUPPRIMER"}).status_code == 401
+        assert requests.delete(f"{API}/admin/articles/{gone2}", headers=h, json={"confirmation": "oui"}).status_code == 400
+        assert requests.delete(f"{API}/admin/articles/{gone2}", headers=h).status_code == 422
+        assert mdb.articles.count_documents({}) == before
+        assert requests.delete(f"{API}/admin/articles/{gone2}", headers=h, json={"confirmation": "SUPPRIMER"}).status_code == 200
+        assert mdb.articles.count_documents({}) == before - 1
+        assert mdb.articles.find_one({"slug": gone2}) is None and mdb.articles.find_one({"slug": keep})
+        assert requests.get(f"{API}/articles/{gone2}").status_code == 404
+        assert requests.get(f"{API}/articles/{gone}").status_code == 404  # ancienne adresse : 404, pas de redirection
+        xml = requests.get(f"{API}/sitemap.xml").text
+        assert gone2 not in xml and f"/ressources/{keep}" in xml and f"/ressources/{SEED_SLUG}" in xml
+        assert gone2 not in [a["slug"] for a in requests.get(f"{API}/admin/articles", headers=h).json()]
+        assert requests.delete(f"{API}/admin/articles/{gone2}", headers=h, json={"confirmation": "SUPPRIMER"}).status_code == 404
+        assert requests.put(f"{API}/admin/articles/{keep}", headers=h, json={"excerpt": "Toujours là"}).status_code == 200
+        assert requests.get(f"{API}/articles/{keep}").json()["excerpt"] == "Toujours là"
+
+
 class TestSitemapAndCommerce:
     def test_sitemap_contents(self):
         xml = requests.get(f"{API}/sitemap.xml").text

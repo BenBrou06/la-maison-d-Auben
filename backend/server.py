@@ -898,8 +898,13 @@ async def upload_image(file: UploadFile = File(...), admin=Depends(get_current_a
 
 
 @api.delete("/admin/articles/{slug}")
-async def delete_article(slug: str, admin=Depends(get_current_admin)):
-    await db.articles.delete_one({"slug": slug})
+async def delete_article(slug: str, inp: DeleteConfirm, admin=Depends(get_current_admin)):
+    # Suppression définitive d'un seul article (et de ses anciennes adresses previous_slugs, qui deviennent 404).
+    require_delete_confirmation(inp)
+    res = await db.articles.delete_one({"slug": slug})
+    if not res.deleted_count:
+        raise HTTPException(404, "Article introuvable.")
+    logger.info(f"Admin deleted article {slug}")
     return {"status": "ok"}
 
 

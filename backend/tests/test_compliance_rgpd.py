@@ -157,7 +157,7 @@ class TestNewsletter:
 class TestSeoFiles:
     def test_robots(self, s):
         t = s.get(f"{BASE_URL}/robots.txt").text
-        assert f"{CANON}/sitemap.xml" in t
+        assert f"{CANON}/api/sitemap.xml" in t
         assert "emergentagent" not in t
 
     def test_sitemap(self, s):

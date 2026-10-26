@@ -9,14 +9,10 @@ import { LaptopMockup, HeroVisual } from "@/components/Screenshot";
 import { ProductCard } from "@/components/ProductCard";
 import { Newsletter } from "@/components/Newsletter";
 import { getSettings, getProducts, getCategories, getArticles, mediaUrl } from "@/lib/api";
-import { formatPrice, t } from "@/lib/i18n";
+import { formatPrice } from "@/lib/i18n";
+import { useContent } from "@/lib/content";
 
-const PRINCIPLES = [
-  { icon: Sparkles, title: "Simple", text: "Des outils faciles à prendre en main, sans être un expert d'Excel." },
-  { icon: Wand2, title: "Utile", text: "Des fonctionnalités pensées pour répondre à de vrais besoins du quotidien." },
-  { icon: Star, title: "Beau", text: "Des outils agréables à utiliser, que l'on a envie d'ouvrir chaque jour." },
-  { icon: HeartHandshake, title: "Accessible", text: "Des produits accessibles, sans abonnement compliqué." },
-];
+const PRINCIPLE_ICONS = [Sparkles, Wand2, Star, HeartHandshake];
 
 export default function Home() {
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: getSettings });
@@ -24,14 +20,16 @@ export default function Home() {
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const { data: articles = [] } = useQuery({ queryKey: ["articles"], queryFn: () => getArticles() });
 
-  const featured = products.find((p) => p.status === "available");
+  const c = useContent("home");
+  const featured = (c.featured_slug && products.find((p) => p.slug === c.featured_slug)) || products.find((p) => p.status === "available");
+  const heroImage = c.hero_image ? mediaUrl(c.hero_image) : featured?.main_image ? mediaUrl(featured.main_image) : "";
   const catMap = Object.fromEntries(categories.map((c) => [c.slug, c]));
 
   return (
     <>
       <Seo
-        title="La Maison d'Auben — L'aubaine pour mieux s'organiser."
-        description="Des outils numériques simples, beaux et intelligents pour mieux organiser votre vie, vos projets et vos envies."
+        title={c.seo_title}
+        description={c.seo_description}
         path="/"
       />
 
@@ -40,13 +38,13 @@ export default function Home() {
         <div className="container-app grid items-center gap-12 py-14 sm:py-20 lg:grid-cols-2 lg:py-24">
           <Reveal>
             <span className="eyebrow inline-flex items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5" /> Produits numériques
+              <Sparkles className="h-3.5 w-3.5" /> {c.hero_eyebrow}
             </span>
             <h1 className="mt-4 font-serif text-4xl font-bold leading-[1.05] tracking-tight text-[#1E3A2B] sm:text-5xl lg:text-6xl">
-              L'aubaine pour<br /> mieux s'organiser.
+              {c.hero_title.split("\n").map((ln, i) => <React.Fragment key={i}>{i > 0 && <br />}{ln}</React.Fragment>)}
             </h1>
             <p className="mt-6 max-w-lg text-base leading-relaxed text-[#626D66] sm:text-lg">
-              {settings?.hero_intro ||
+              {c.hero_intro || settings?.hero_intro ||
                 "Des outils numériques simples, beaux et intelligents pour mieux organiser votre vie, vos projets et vos envies."}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -55,7 +53,7 @@ export default function Home() {
                 data-testid="hero-primary-cta"
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-6 py-3.5 font-medium text-[#FAF8F5] transition-all duration-200 hover:bg-[#3B6B4C] active:scale-[0.98]"
               >
-                {t("cta.discover_tools")} <ArrowRight className="h-4 w-4" />
+                {c.hero_cta_primary} <ArrowRight className="h-4 w-4" />
               </Link>
               {featured && (
                 <Link
@@ -63,7 +61,7 @@ export default function Home() {
                   data-testid="hero-secondary-cta"
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#87A987]/40 bg-[#EAF0EC] px-6 py-3.5 font-medium text-[#1E3A2B] transition-all duration-200 hover:bg-[#1E3A2B] hover:text-[#FAF8F5]"
                 >
-                  {t("cta.discover_product")}
+                  {c.hero_cta_secondary}
                 </Link>
               )}
             </div>
@@ -71,7 +69,7 @@ export default function Home() {
           <Reveal delay={0.15}>
             <div className="relative">
               <div className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-[#EAF0EC] to-[#F2EDE4]" />
-              <HeroVisual url={featured?.main_image ? mediaUrl(featured.main_image) : ""} caption="Budget mensuel" />
+              <HeroVisual url={heroImage} caption={c.hero_caption} />
             </div>
           </Reveal>
         </div>
@@ -83,11 +81,11 @@ export default function Home() {
           <div className="card-soft grid gap-8 overflow-hidden p-6 sm:p-10 lg:grid-cols-2 lg:items-center">
             <Reveal>
               <div className="p-2">
-                <HeroVisual url={featured.main_image ? mediaUrl(featured.main_image) : ""} caption="Aperçu du produit" />
+                <HeroVisual url={featured.main_image ? mediaUrl(featured.main_image) : ""} caption={c.featured_caption} />
               </div>
             </Reveal>
             <Reveal delay={0.1}>
-              <span className="eyebrow">Produit phare</span>
+              <span className="eyebrow">{c.featured_eyebrow}</span>
               <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">{featured.name}</h2>
               <p className="mt-4 text-[#626D66]">{featured.description}</p>
               <ul className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -107,7 +105,7 @@ export default function Home() {
                   data-testid="featured-cta"
                   className="inline-flex items-center gap-2 rounded-xl bg-[#1E3A2B] px-6 py-3.5 font-medium text-[#FAF8F5] transition-all hover:bg-[#3B6B4C]"
                 >
-                  Découvrir le produit <ArrowRight className="h-4 w-4" />
+                  {c.featured_cta} <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
             </Reveal>
@@ -119,23 +117,26 @@ export default function Home() {
       <section className="bg-[#F2EDE4] py-14 sm:py-20">
         <div className="container-app">
           <Reveal className="mx-auto max-w-2xl text-center">
-            <span className="eyebrow">Pourquoi La Maison d'Auben ?</span>
+            <span className="eyebrow">{c.why_eyebrow}</span>
             <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">
-              De bons outils, pensés pour la vraie vie.
+              {c.why_title}
             </h2>
           </Reveal>
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {PRINCIPLES.map((p, i) => (
-              <Reveal key={p.title} delay={i * 0.08}>
+            {c.principles.map((p, i) => {
+              const PIcon = PRINCIPLE_ICONS[i % PRINCIPLE_ICONS.length];
+              return (
+              <Reveal key={i} delay={i * 0.08}>
                 <div className="card-soft h-full p-7">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EAF0EC] text-[#3B6B4C]">
-                    <p.icon className="h-6 w-6" strokeWidth={1.75} />
+                    <PIcon className="h-6 w-6" strokeWidth={1.75} />
                   </div>
                   <h3 className="mt-5 font-serif text-xl font-semibold text-[#1E3A2B]">{p.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-[#626D66]">{p.text}</p>
                 </div>
               </Reveal>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -143,11 +144,11 @@ export default function Home() {
       {/* NOTRE UNIVERS */}
       <section className="container-app py-14 sm:py-20">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <span className="eyebrow">Notre univers</span>
+          <span className="eyebrow">{c.universe_eyebrow}</span>
           <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">
-            Un outil pour chaque projet de vie.
+            {c.universe_title}
           </h2>
-          <p className="mt-4 text-[#626D66]">Aujourd'hui le budget. Demain, bien plus encore.</p>
+          <p className="mt-4 text-[#626D66]">{c.universe_text}</p>
         </Reveal>
         <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {categories.map((c, i) => (
@@ -175,16 +176,15 @@ export default function Home() {
         <Reveal>
           <div className="relative overflow-hidden rounded-3xl bg-[#1E3A2B] p-8 grain sm:p-14">
             <div className="relative z-10 max-w-3xl">
-              <span className="eyebrow text-[#87A987]">Une marque qui évolue</span>
+              <span className="eyebrow text-[#87A987]">{c.brand_eyebrow}</span>
               <p className="mt-5 font-serif text-2xl leading-snug text-[#FAF8F5] sm:text-3xl lg:text-4xl">
-                Aujourd'hui, mieux gérer son budget. Demain, mieux organiser ses voyages, son appartement,
-                sa voiture, ses projets — et bien plus encore.
+                {c.brand_text}
               </p>
               <Link
                 to="/a-propos"
                 className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#D4A359] px-6 py-3.5 font-medium text-[#1E3A2B] transition-all hover:brightness-105"
               >
-                Découvrir la Maison <ArrowRight className="h-4 w-4" />
+                {c.brand_cta} <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
           </div>
@@ -196,11 +196,11 @@ export default function Home() {
         <section className="container-app py-14 sm:py-20">
           <Reveal className="flex items-end justify-between">
             <div>
-              <span className="eyebrow">Ressources</span>
-              <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">Nos derniers conseils.</h2>
+              <span className="eyebrow">{c.resources_eyebrow}</span>
+              <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">{c.resources_title}</h2>
             </div>
             <Link to="/ressources" className="hidden items-center gap-1.5 text-sm font-medium text-[#3B6B4C] hover:text-[#1E3A2B] sm:inline-flex">
-              Tout voir <ArrowRight className="h-4 w-4" />
+              {c.resources_link} <ArrowRight className="h-4 w-4" />
             </Link>
           </Reveal>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
@@ -208,7 +208,7 @@ export default function Home() {
               <Reveal key={a.slug} delay={i * 0.08}>
                 <Link to={`/ressources/${a.slug}`} data-testid={`home-article-${a.slug}`} className="group card-soft block h-full overflow-hidden">
                   <div className="aspect-[16/10] overflow-hidden">
-                    <img src={a.cover_image} alt={a.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    <img src={mediaUrl(a.cover_image)} alt={a.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   </div>
                   <div className="p-6">
                     <span className="text-xs font-semibold uppercase tracking-wider text-[#3B6B4C]">{a.category}</span>
@@ -225,7 +225,7 @@ export default function Home() {
       {/* NEWSLETTER */}
       <section className="container-app py-10 sm:py-16">
         <Reveal>
-          <Newsletter title={settings?.newsletter_title} text={settings?.newsletter_text} />
+          <Newsletter title={c.newsletter_title || settings?.newsletter_title} text={c.newsletter_text || settings?.newsletter_text} />
         </Reveal>
       </section>
     </>

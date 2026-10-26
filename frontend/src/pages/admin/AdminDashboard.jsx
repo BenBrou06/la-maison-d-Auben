@@ -7,6 +7,9 @@ import { Logo } from "@/components/Logo";
 import { Seo } from "@/components/Seo";
 import ContentPanel from "@/pages/admin/ContentPanel";
 import NewsletterPanel from "@/pages/admin/NewsletterPanel";
+import SitePagesPanel from "@/pages/admin/site/SitePagesPanel";
+import ArticlesPanel from "@/pages/admin/site/ArticlesPanel";
+import FaqPanel from "@/pages/admin/site/FaqPanel";
 import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import {
   adminMe, adminOrders, adminMessages, getProducts, adminDeleteMessage, adminDeleteOrder,
@@ -16,7 +19,10 @@ import { formatPrice } from "@/lib/i18n";
 
 const TABS = [
   { key: "products", label: "Produits", icon: Package },
-  { key: "content", label: "Contenu", icon: FileText },
+  { key: "content", label: "Contenu produits", icon: FileText },
+  { key: "pages", label: "Pages", icon: FileText },
+  { key: "articles", label: "Articles", icon: FileText },
+  { key: "faq", label: "FAQ", icon: FileText },
   { key: "orders", label: "Commandes", icon: ShoppingBag },
   { key: "newsletter", label: "Newsletter", icon: Mail },
   { key: "messages", label: "Messages", icon: MessageSquare },
@@ -70,6 +76,9 @@ export default function AdminDashboard() {
           <div className="mt-8">
             {tab === "products" && <ProductsPanel qc={qc} />}
             {tab === "content" && <ContentPanel />}
+            {tab === "pages" && <SitePagesPanel />}
+            {tab === "articles" && <ArticlesPanel />}
+            {tab === "faq" && <FaqPanel />}
             {tab === "orders" && <OrdersPanel />}
             {tab === "newsletter" && <NewsletterPanel />}
             {tab === "messages" && <MessagesPanel />}

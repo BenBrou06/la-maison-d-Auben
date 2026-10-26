@@ -5,4 +5,4 @@ Disallow: /paiement/
 Disallow: /telechargement/
 Disallow: /newsletter/
 
-Sitemap: https://la-maison-dauben.com/sitemap.xml
+Sitemap: https://la-maison-dauben.com/api/sitemap.xml

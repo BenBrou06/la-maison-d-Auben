@@ -20,6 +20,14 @@ export const getProduct = (slug) => api.get(`/products/${slug}`).then((r) => r.d
 export const getArticles = (params) => api.get("/articles", { params }).then((r) => r.data);
 export const getArticle = (slug) => api.get(`/articles/${slug}`).then((r) => r.data);
 export const getFaq = () => api.get("/faq").then((r) => r.data);
+export const getContent = () => api.get("/content").then((r) => r.data);
+export const adminContent = () => api.get("/admin/content").then((r) => r.data);
+export const adminSaveContent = (key, fields) => api.put(`/admin/content/${key}`, { fields }).then((r) => r.data);
+export const adminArticles = () => api.get("/admin/articles").then((r) => r.data);
+export const adminCreateArticle = (payload) => api.post("/admin/articles", payload).then((r) => r.data);
+export const adminUpdateArticle = (slug, payload) => api.put(`/admin/articles/${slug}`, payload).then((r) => r.data);
+export const adminFaq = () => api.get("/admin/faq").then((r) => r.data);
+export const adminSaveFaq = (items) => api.put("/admin/faq", { items }).then((r) => r.data);
 export const subscribeNewsletter = (payload) => api.post("/newsletter", payload).then((r) => r.data);
 export const unsubscribeNewsletter = (token) => api.post("/newsletter/unsubscribe", { token }).then((r) => r.data);
 export const sendContact = (payload) => api.post("/contact", payload).then((r) => r.data);
@@ -31,7 +39,7 @@ export const getOrderBySession = (sid) => api.get(`/orders/by-session/${sid}`).t
 export const getDownloadInfo = (token) => api.get(`/download-info/${token}`).then((r) => r.data);
 
 // Media url helper
-export const mediaUrl = (path) => (path ? `${API}/media/${path}` : "");
+export const mediaUrl = (path) => (!path ? "" : /^(\/|https?:\/\/)/.test(path) ? path : `${API}/media/${path}`);
 
 // Admin
 export const adminLogin = (payload) => api.post("/admin/login", payload).then((r) => r.data);

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { Newsletter } from "@/components/Newsletter";
 import { ShieldCheck, Lock, Mail } from "lucide-react";
+import { useContent } from "@/lib/content";
 
 const COLS = [
   {
@@ -34,6 +35,7 @@ const COLS = [
 ];
 
 export const Footer = () => {
+  const c = useContent("footer");
   return (
     <footer className="mt-20 border-t border-[#E2DDD5] bg-[#F2EDE4]">
       <div className="container-app py-14">
@@ -41,11 +43,11 @@ export const Footer = () => {
           <div>
             <Logo />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#626D66]">
-              Des outils numériques simples, beaux et intelligents pour mieux organiser votre vie et vos projets.
+              {c.tagline}
             </p>
             <div className="mt-5 flex flex-wrap gap-3 text-xs text-[#3B6B4C]">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5"><Lock className="h-3.5 w-3.5" /> Paiement sécurisé</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5"><ShieldCheck className="h-3.5 w-3.5" /> Téléchargement protégé</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5"><Lock className="h-3.5 w-3.5" /> {c.badge_payment}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5"><ShieldCheck className="h-3.5 w-3.5" /> {c.badge_download}</span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
@@ -68,10 +70,10 @@ export const Footer = () => {
           <div className="relative z-10 grid gap-6 lg:grid-cols-2 lg:items-center">
             <div>
               <h3 className="font-serif text-2xl font-semibold text-[#FAF8F5] sm:text-3xl">
-                Recevez nos nouveaux outils et ressources gratuitement.
+                {c.newsletter_title}
               </h3>
               <p className="mt-3 flex items-center gap-2 text-sm text-[#B9C9BE]">
-                <Mail className="h-4 w-4" /> Pas de spam, juste nos meilleures idées et nos nouveautés.
+                <Mail className="h-4 w-4" /> {c.newsletter_text}
               </p>
             </div>
             <Newsletter compact />
@@ -81,8 +83,8 @@ export const Footer = () => {
 
       <div className="border-t border-[#E2DDD5]/70">
         <div className="container-app flex flex-col items-center justify-between gap-3 py-6 sm:flex-row">
-          <p className="text-xs text-[#626D66]">© {new Date().getFullYear()} La Maison d'Auben. Tous droits réservés.</p>
-          <p className="text-xs italic text-[#87A987]">L'aubaine pour mieux s'organiser.</p>
+          <p className="text-xs text-[#626D66]">© {new Date().getFullYear()} {c.copyright}</p>
+          <p className="text-xs italic text-[#87A987]">{c.slogan}</p>
         </div>
       </div>
     </footer>

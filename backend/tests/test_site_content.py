@@ -87,6 +87,11 @@ class TestPageContent:
         assert requests.put(f"{API}/admin/content/../x", headers=h, json={"fields": {"a": "x"}}).status_code in (400, 404)
         lst = [{"title": "ok", "body": "<img src=x onerror=alert(1)>"}]
         assert requests.put(f"{API}/admin/content/legal-cgv", headers=h, json={"fields": {"sections": lst}}).status_code == 400
+        assert requests.put(f"{API}/admin/content/page-inconnue", headers=h, json={"fields": {"a": "x"}}).status_code == 400
+        assert requests.put(f"{API}/admin/content/about", headers=h, json={"fields": {"image": "//evil.example/x.png"}}).status_code == 400
+        assert requests.put(f"{API}/admin/articles/{SEED_SLUG}", headers=h, json={"cover_image": "//evil.example/x.png"}).status_code == 400
+        dup = [{"id": "faq-1", "question": "a", "answer": "b"}, {"id": "faq-1", "question": "c", "answer": "d"}]
+        assert requests.put(f"{API}/admin/faq", headers=h, json={"items": dup}).status_code == 400
 
     def test_partial_save_merge_unset_and_restart(self, h):
         r = requests.put(f"{API}/admin/content/home", headers=h, json={"fields": {"why_title": "Titre fictif A"}})

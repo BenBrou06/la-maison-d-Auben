@@ -22,12 +22,12 @@ function FieldInput({ f, value, onChange, products }) {
   return <input value={value || ""} onChange={(e) => onChange(e.target.value)} className={inputCls} data-testid={id} />;
 }
 
-function PageForm({ page, stored, products, onSaved }) {
+function PageForm({ page, stored, products, onSaved, onDirty }) {
   const effective = useMemo(() => ({ ...defaultsFor(page.key), ...(stored || {}) }), [page.key, stored]);
   const [draft, setDraft] = useState(effective);
   const [saving, setSaving] = useState(false);
-  useEffect(() => setDraft(effective), [effective]);
   const changed = page.fields.filter((f) => !same(draft[f.name], effective[f.name]));
+  useEffect(() => onDirty(changed.length > 0), [changed.length, onDirty]);
 
   const save = async () => {
     setSaving(true);
@@ -70,7 +70,8 @@ function PageForm({ page, stored, products, onSaved }) {
 
 export default function SitePagesPanel() {
   const qc = useQueryClient();
-  const { data: docs = [] } = useQuery({ queryKey: ["admin-content"], queryFn: adminContent });
+  const { data: docs = [], isSuccess } = useQuery({ queryKey: ["admin-content"], queryFn: adminContent });
+  const [dirty, setDirty] = useState(false);
   const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => getProducts() });
   const [key, setKey] = useState(CONTENT_PAGES[0].key);
   const stored = docs.find((d) => d.key === key)?.fields;
@@ -85,7 +86,7 @@ export default function SitePagesPanel() {
         {CONTENT_PAGES.map((p) => {
           const n = Object.keys(docs.find((d) => d.key === p.key)?.fields || {}).length;
           return (
-            <button key={p.key} onClick={() => setKey(p.key)} data-testid={`content-page-${p.key}`}
+            <button key={p.key} onClick={() => { if (p.key !== key && dirty && !window.confirm("Des modifications ne sont pas enregistrées. Les abandonner ?")) return; setDirty(false); setKey(p.key); }} data-testid={`content-page-${p.key}`}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${key === p.key ? "bg-[#1E3A2B] text-[#FAF8F5]" : "text-[#2C332E] hover:bg-[#FAF8F5]"}`}>
               {p.label}{n > 0 && <span className="text-[10px] opacity-70">{n} modif.</span>}
             </button>
@@ -94,7 +95,7 @@ export default function SitePagesPanel() {
       </nav>
       <div className="card-soft p-6">
         <h2 className="mb-5 font-serif text-xl font-semibold text-[#1E3A2B]">{page.label}</h2>
-        <PageForm key={key} page={page} stored={stored} products={products} onSaved={onSaved} />
+        {isSuccess ? <PageForm key={key} page={page} stored={stored} products={products} onSaved={onSaved} onDirty={setDirty} /> : <p className="text-sm text-[#626D66]">Chargement…</p>}
       </div>
     </div>
   );

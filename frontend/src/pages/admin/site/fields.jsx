@@ -57,6 +57,10 @@ export function ListEditor({ value = [], item, fixed, onChange, testid, newItem 
                 {f.label}
                 {f.type === "textarea"
                   ? <textarea rows={f.rows || 3} value={it[f.name] || ""} onChange={(e) => set(i, f.name, e.target.value)} className={`${inputCls} mt-1 font-normal`} data-testid={`${testid}-${i}-${f.name}`} />
+                  : f.type === "select"
+                  ? <select value={it[f.name] || f.options[0].value} onChange={(e) => set(i, f.name, e.target.value)} className={`${inputCls} mt-1 font-normal`} data-testid={`${testid}-${i}-${f.name}`}>
+                      {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
                   : <input value={it[f.name] || ""} onChange={(e) => set(i, f.name, e.target.value)} className={`${inputCls} mt-1 font-normal`} data-testid={`${testid}-${i}-${f.name}`} />}
               </label>
             ))}

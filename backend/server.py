@@ -916,8 +916,11 @@ async def _seed_once(marker: str, coll, exists_query: dict) -> bool:
     """True si le contenu de démo doit être inséré (jamais inséré auparavant et absent)."""
     if await db.seed_markers.find_one({"key": marker}):
         return False
-    await db.seed_markers.insert_one({"key": marker, "at": now_iso()})
     return not await coll.find_one(exists_query)
+
+
+async def _mark_seeded(marker: str):
+    await db.seed_markers.update_one({"key": marker}, {"$setOnInsert": {"key": marker, "at": now_iso()}}, upsert=True)
 
 
 async def seed():
@@ -961,11 +964,13 @@ async def seed():
     for a in seed_data.ARTICLES:
         if await _seed_once(f"article:{a['slug']}", db.articles, {"$or": [{"slug": a["slug"]}, {"previous_slugs": a["slug"]}]}):
             await db.articles.insert_one({**a})
+        await _mark_seeded(f"article:{a['slug']}")
     # FAQ
     for i, f in enumerate(seed_data.GLOBAL_FAQ):
         fid = f"faq-{i+1}"
         if await _seed_once(f"faq:{fid}", db.faq, {"id": fid}):
             await db.faq.insert_one({**f, "id": fid})
+        await _mark_seeded(f"faq:{fid}")
     # Fichier Excel par défaut (vrai fichier fourni) pour Budget mensuel.
     bm = await db.products.find_one({"slug": "budget-mensuel"})
     if bm and not bm.get("download_storage_path"):

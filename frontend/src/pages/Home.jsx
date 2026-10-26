@@ -9,7 +9,7 @@ import { LaptopMockup, HeroVisual } from "@/components/Screenshot";
 import { ProductCard } from "@/components/ProductCard";
 import { Newsletter } from "@/components/Newsletter";
 import { getSettings, getProducts, getCategories, getArticles, mediaUrl } from "@/lib/api";
-import { formatPrice } from "@/lib/i18n";
+import { formatPrice, t } from "@/lib/i18n";
 import { useContent } from "@/lib/content";
 
 const PRINCIPLE_ICONS = [Sparkles, Wand2, Star, HeartHandshake];
@@ -21,7 +21,7 @@ export default function Home() {
   const { data: articles = [] } = useQuery({ queryKey: ["articles"], queryFn: () => getArticles() });
 
   const c = useContent("home");
-  const featured = (c.featured_slug && products.find((p) => p.slug === c.featured_slug)) || products.find((p) => p.status === "available");
+  const featured = (c.featured_slug && products.find((p) => p.slug === c.featured_slug)) || products.find((p) => p.purchasable);
   const heroImage = c.hero_image ? mediaUrl(c.hero_image) : featured?.main_image ? mediaUrl(featured.main_image) : "";
   const catMap = Object.fromEntries(categories.map((c) => [c.slug, c]));
 
@@ -61,7 +61,7 @@ export default function Home() {
                   data-testid="hero-secondary-cta"
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#87A987]/40 bg-[#EAF0EC] px-6 py-3.5 font-medium text-[#1E3A2B] transition-all duration-200 hover:bg-[#1E3A2B] hover:text-[#FAF8F5]"
                 >
-                  {c.hero_cta_secondary}
+                  {c.hero_cta_secondary || `Découvrir ${featured.name}`}
                 </Link>
               )}
             </div>
@@ -69,7 +69,7 @@ export default function Home() {
           <Reveal delay={0.15}>
             <div className="relative">
               <div className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-[#EAF0EC] to-[#F2EDE4]" />
-              <HeroVisual url={heroImage} caption={c.hero_caption} />
+              <HeroVisual url={heroImage} caption={c.hero_caption || featured?.name || "Budget mensuel"} />
             </div>
           </Reveal>
         </div>
@@ -99,7 +99,9 @@ export default function Home() {
                 ))}
               </ul>
               <div className="mt-8 flex items-center gap-5">
-                <span className="font-serif text-3xl font-bold text-[#1E3A2B]">{formatPrice(featured.price, featured.currency)}</span>
+                {featured.purchasable
+                  ? <span className="font-serif text-3xl font-bold text-[#1E3A2B]">{formatPrice(featured.price, featured.currency)}</span>
+                  : <span className="rounded-full bg-[#D4A359] px-3 py-1 text-xs font-semibold text-white" data-testid="featured-coming-soon">{t("badge.coming_soon")}</span>}
                 <Link
                   to={`/boutique/${featured.slug}`}
                   data-testid="featured-cta"

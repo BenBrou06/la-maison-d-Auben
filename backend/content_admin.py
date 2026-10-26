@@ -18,6 +18,15 @@ _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _HTML = re.compile(r"<\s*/?\s*[a-zA-Z!?]")
 _BAD_URL = re.compile(r"\]\(\s*(javascript|data|vbscript):", re.I)
 MAX_STR = 30000
+PAGE_KEYS = {"home", "shop", "resources", "about", "faq", "contact", "footer", "legal-mentions-legales", "legal-cgv",
+             "legal-confidentialite", "legal-politique-cookies", "legal-produits-numeriques"}
+
+
+def valid_image(img: str) -> bool:
+    """Chemin local (/images/…), objet stocké (dossier/fichier.ext) ou URL https:// — jamais //hote ni javascript:."""
+    if img.startswith("https://"):
+        return not re.search(r"[\s\"'<>]", img)
+    return not img.startswith("//") and ".." not in img and bool(re.match(r"^/?[\w\-./]+$", img))
 
 
 def now_iso():
@@ -65,7 +74,7 @@ async def admin_content(admin=Depends(get_current_admin)):
 
 @router.put("/admin/content/{key}")
 async def update_content(key: str, inp: ContentUpdate, admin=Depends(get_current_admin)):
-    if not _KEY.match(key):
+    if key not in PAGE_KEYS:
         raise HTTPException(400, "Clé de page invalide.")
     if not inp.fields:
         raise HTTPException(400, "Aucune modification.")
@@ -74,6 +83,8 @@ async def update_content(key: str, inp: ContentUpdate, admin=Depends(get_current
         if not _FIELD.match(name):
             raise HTTPException(400, f"Nom de champ invalide : {name}")
         check_safe(value)
+        if name.endswith("image") and value and not (isinstance(value, str) and valid_image(value)):
+            raise HTTPException(400, "Image : chemin ou URL https:// invalide.")
         if value is None:
             unsets[f"fields.{name}"] = ""
         else:
@@ -114,8 +125,7 @@ async def _validated(inp: ArticleInput, current_slug: Optional[str] = None) -> d
     for b in data.get("content") or []:
         check_safe(b["text"])
     img = data.get("cover_image")
-    ok_url = img and img.startswith("https://") and not re.search(r"[\s\"'<>]", img)
-    if img and not ok_url and (".." in img or not re.match(r"^/?[\w\-./]+$", img)):
+    if img and not valid_image(img):
         raise HTTPException(400, "Image : chemin ou URL https:// invalide.")
     if "slug" in data:
         if not _SLUG.match(data["slug"]):
@@ -189,6 +199,9 @@ async def save_faq(inp: FaqInput, admin=Depends(get_current_admin)):
     import uuid
     for it in inp.items:
         check_safe([it.question, it.answer])
+    ids = [it.id for it in inp.items if it.id]
+    if len(ids) != len(set(ids)):
+        raise HTTPException(400, "Identifiants de questions en double.")
     keep = []
     for i, it in enumerate(inp.items):
         fid = it.id or f"faq-{uuid.uuid4().hex[:10]}"

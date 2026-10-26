@@ -8,9 +8,10 @@ import { ImageInput, ListEditor, inputCls, primaryCls, btnCls } from "@/pages/ad
 const EMPTY = { title: "", slug: "", category: "", excerpt: "", cover_image: "", published_at: new Date().toISOString().slice(0, 10),
   read_time: 3, content: [], cta_text: "", related_product_slugs: [], published: false, seo_title: "", seo_description: "" };
 const BLOCK = [
-  { name: "type", label: "Type : p (paragraphe) ou h2 (titre)", type: "text" },
+  { name: "type", label: "Type", type: "select", options: [{ value: "p", label: "Paragraphe" }, { value: "h2", label: "Titre de section" }] },
   { name: "text", label: "Texte", type: "textarea", rows: 4 },
 ];
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const slugify = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const toForm = (a) => ({ ...EMPTY, ...a, published: a.published !== false, published_at: (a.published_at || "").slice(0, 10) });
 
@@ -38,6 +39,7 @@ function ArticleForm({ article, products, onSaved }) {
     if (payload.published_at) payload.published_at = new Date(payload.published_at).toISOString();
     if (payload.read_time !== undefined) payload.read_time = Number(payload.read_time) || 1;
     if (payload.content) payload.content = payload.content.filter((b) => b.text.trim()).map((b) => ({ type: b.type === "h2" ? "h2" : "p", text: b.text }));
+    if (payload.slug && !SLUG_RE.test(payload.slug)) return toast.error("Slug invalide : lettres minuscules, chiffres et tirets uniquement.");
     if (!isNew && payload.slug && !window.confirm(`Changer l'adresse de l'article en /ressources/${payload.slug} ? L'ancienne adresse redirigera vers la nouvelle.`)) return;
     if (!Object.keys(payload).length) return;
     setSaving(true);

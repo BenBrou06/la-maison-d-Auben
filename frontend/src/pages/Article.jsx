@@ -10,7 +10,7 @@ import { useContent } from "@/lib/content";
 
 export default function Article() {
   const { slug } = useParams();
-  const { data: article, isLoading, isError } = useQuery({ queryKey: ["article", slug], queryFn: () => getArticle(slug) });
+  const { data: article, isLoading, isError } = useQuery({ queryKey: ["article", slug], queryFn: () => getArticle(slug), retry: false });
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const catMap = Object.fromEntries(categories.map((c) => [c.slug, c]));
   const rc = useContent("resources");

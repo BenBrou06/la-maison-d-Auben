@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { SITE_URL } from "@/lib/site";
 
 // SEO léger sans dépendance : titre, meta description, canonical, OG.
-export const Seo = ({ title, description, image, path, noindex = false }) => {
+export const Seo = ({ title, description, image, path, noindex = false, jsonLd = null }) => {
   useEffect(() => {
     if (title) document.title = title;
     const set = (selector, attr, value) => {
@@ -41,7 +41,21 @@ export const Seo = ({ title, description, image, path, noindex = false }) => {
       document.head.appendChild(canonical);
     }
     canonical.setAttribute("href", SITE_URL + (path || window.location.pathname));
+    set('meta[property="og:url"]', "content", SITE_URL + (path || window.location.pathname));
   }, [title, description, image, path, noindex]);
+
+  // Données structurées propres à la page (une seule balise, retirée en quittant la page).
+  const ld = jsonLd ? JSON.stringify(jsonLd) : "";
+  useEffect(() => {
+    if (!ld) return undefined;
+    const el = document.createElement("script");
+    el.type = "application/ld+json";
+    el.id = "seo-jsonld";
+    el.text = ld.replace(/</g, "\\u003c");
+    document.getElementById("seo-jsonld")?.remove();
+    document.head.appendChild(el);
+    return () => el.remove();
+  }, [ld]);
   return null;
 };
 

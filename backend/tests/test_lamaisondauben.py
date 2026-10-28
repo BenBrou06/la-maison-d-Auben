@@ -1,11 +1,16 @@
 """End-to-end backend API tests for La Maison d'Auben."""
 import os
 import time
+from datetime import datetime, timedelta, timezone
 import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://auben-preview-shop.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
+# Renonciation au droit de rétractation obligatoire depuis 2026-06 (voir server.py WITHDRAWAL_CONSENT_VERSION).
+WAIVER = {"withdrawal_waiver": True, "withdrawal_consent_version": "retractation-v1-2026-06"}
+# Prix public actuel de Budget mensuel (décision propriétaire 2026-06 ; anciennes commandes à 7,99).
+SITE_PRICE = 6.99
 
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
@@ -66,7 +71,7 @@ class TestPublicContent:
         avail = [p for p in prods if p.get("status") == "available"]
         assert len(avail) >= 1
         bm = next((p for p in prods if p["slug"] == "budget-mensuel"), None)
-        assert bm and bm["price"] == 7.99 and bm.get("main_image")
+        assert bm and bm["price"] == SITE_PRICE and bm.get("main_image")
 
     def test_product_detail(self, s):
         r = s.get(f"{API}/products/budget-mensuel")
@@ -126,7 +131,7 @@ class TestNewsletterContact:
 class TestPayments:
     def test_checkout(self, s):
         r = s.post(f"{API}/payments/checkout", json={
-            "lookup_key": "budget_mensuel", "origin_url": BASE_URL,
+            "lookup_key": "budget_mensuel", **WAIVER, "origin_url": BASE_URL,
         })
         assert r.status_code == 200, r.text
         data = r.json()
@@ -199,7 +204,7 @@ class TestTaxInclusiveAndOwnerNotified:
         r = s.get(f"{API}/products/budget-mensuel")
         assert r.status_code == 200
         p = r.json()
-        assert p["price"] == 7.99
+        assert p["price"] == SITE_PRICE
         assert p.get("main_image")
 
     def test_latest_paid_order_is_tax_inclusive_and_owner_notified(self, s, admin_headers):
@@ -214,7 +219,7 @@ class TestTaxInclusiveAndOwnerNotified:
         paid_bm.sort(key=lambda o: o.get("created_at", ""), reverse=True)
         latest = paid_bm[0]
         # Tax-inclusive: total paid must be exactly 7.99 EUR (not 8.43)
-        assert latest["amount"] == 7.99, f"Expected 7.99 EUR, got {latest['amount']}"
+        assert latest["amount"] in (SITE_PRICE, 7.99), f"Expected TTC price without added tax, got {latest['amount']}"
         assert latest["currency"] == "eur"
         # Owner notification flag set true on fulfilled order
         assert latest.get("owner_notified") is True, "owner_notified must be true"
@@ -253,7 +258,7 @@ class TestTaxInclusiveAndOwnerNotified:
         assert found, "Missing 'Stripe initialisé | mode=test | cle=test' log line"
 
     def test_checkout_session_id_is_test_mode(self, s):
-        r = s.post(f"{API}/payments/checkout", json={"lookup_key": "budget_mensuel", "origin_url": BASE_URL})
+        r = s.post(f"{API}/payments/checkout", json={"lookup_key": "budget_mensuel", **WAIVER, "origin_url": BASE_URL})
         assert r.status_code == 200
         sid = r.json()["session_id"]
         assert sid.startswith("cs_test_"), f"Expected cs_test_ prefix, got {sid}"
@@ -294,7 +299,7 @@ class TestTaxInclusiveAndOwnerNotified:
     def test_unpaid_session_no_order_and_by_session_404(self, s, admin_headers):
         """Creating a checkout without paying MUST NOT create an order."""
         r = s.post(f"{API}/payments/checkout", json={
-            "lookup_key": "budget_mensuel", "origin_url": BASE_URL,
+            "lookup_key": "budget_mensuel", **WAIVER, "origin_url": BASE_URL,
         })
         assert r.status_code == 200
         sid = r.json()["session_id"]
@@ -347,7 +352,7 @@ class TestTaxInclusiveAndOwnerNotified:
     # ----- TEST 11: extra fields (amount/price) ignored; server-side authoritative amount -----
     def test_checkout_ignores_extra_amount_fields(self, s, admin_headers):
         r = s.post(f"{API}/payments/checkout", json={
-            "lookup_key": "budget_mensuel",
+            "lookup_key": "budget_mensuel", **WAIVER,
             "origin_url": BASE_URL,
             "amount": 1,          # attempted override
             "price": 0.01,        # attempted override
@@ -392,6 +397,7 @@ class TestTaxInclusiveAndOwnerNotified:
 
     # ----- Rate limiting -----
     def test_rate_limit_admin_login(self):
+        time.sleep(61)  # fenêtre propre : les connexions admin des fixtures comptent pour la même IP réelle
         ip = "203.0.113.11"
         headers = {"X-Forwarded-For": ip}
         codes = []
@@ -404,6 +410,7 @@ class TestTaxInclusiveAndOwnerNotified:
         # 429 should appear after the 5th
         idx = codes.index(429)
         assert idx >= 5, f"429 came too early at {idx}: {codes}"
+        time.sleep(61)  # laisse la fenêtre se vider pour les tests suivants
 
     def test_rate_limit_contact(self):
         ip = "203.0.113.12"
@@ -416,6 +423,7 @@ class TestTaxInclusiveAndOwnerNotified:
                               headers=headers)
             codes.append(r.status_code)
         assert 429 in codes, f"Expected 429 in {codes}"
+        time.sleep(61)  # laisse la fenêtre se vider pour les tests suivants
 
     def test_rate_limit_newsletter(self):
         ip = "203.0.113.13"
@@ -427,6 +435,7 @@ class TestTaxInclusiveAndOwnerNotified:
                               headers=headers)
             codes.append(r.status_code)
         assert 429 in codes, f"Expected 429 in {codes}"
+        time.sleep(61)  # laisse la fenêtre se vider pour les tests suivants
 
     def test_rate_limit_checkout(self):
         ip = "203.0.113.14"
@@ -434,10 +443,11 @@ class TestTaxInclusiveAndOwnerNotified:
         codes = []
         for _ in range(22):
             r = requests.post(f"{API}/payments/checkout",
-                              json={"lookup_key": "budget_mensuel", "origin_url": BASE_URL},
+                              json={"lookup_key": "budget_mensuel", **WAIVER, "origin_url": BASE_URL},
                               headers=headers)
             codes.append(r.status_code)
         assert 429 in codes, f"Expected 429 in {codes}"
+        time.sleep(61)  # laisse la fenêtre se vider pour les tests suivants
 
     # ----- Upload validation -----
     def test_upload_image_rejects_txt(self, s, admin_headers):
@@ -492,6 +502,10 @@ class TestTaxInclusiveAndOwnerNotified:
         orders.sort(key=lambda o: o.get("created_at", ""), reverse=True)
         tok = orders[0]["download_token"]
         r2 = s.get(f"{API}/download/{tok}")
+        if (orders[0].get("download_expires_at") or "9999") < datetime.now(timezone.utc).isoformat():
+            # Lien expiré (commandes de test anciennes) : l'expiration doit être appliquée.
+            assert r2.status_code == 410, r2.status_code
+            return
         assert r2.status_code == 200
         assert "spreadsheetml.sheet" in r2.headers.get("content-type", "")
         cd = r2.headers.get("content-disposition", "")
@@ -509,7 +523,7 @@ class TestOriginUrlHardening:
     def test_hostile_origin_url_is_ignored(self, s):
         hostile = "https://evil-hacker.example.com"
         r = s.post(f"{API}/payments/checkout", json={
-            "lookup_key": "budget_mensuel",
+            "lookup_key": "budget_mensuel", **WAIVER,
             "origin_url": hostile,
         })
         assert r.status_code == 200, r.text
@@ -542,7 +556,7 @@ class TestOriginUrlHardening:
 
     def test_normal_origin_url_still_returns_cs_test_session(self, s):
         r = s.post(f"{API}/payments/checkout", json={
-            "lookup_key": "budget_mensuel", "origin_url": BASE_URL,
+            "lookup_key": "budget_mensuel", **WAIVER, "origin_url": BASE_URL,
         })
         assert r.status_code == 200, r.text
         assert r.json()["session_id"].startswith("cs_test_")
@@ -580,13 +594,17 @@ class TestAtomicDownloadLimit:
 
         async def _reset():
             client = motor.motor_asyncio.AsyncIOMotorClient(mongo_url)
+            prev = await client[db_name].orders.find_one({"download_token": tok}, {"_id": 0, "download_expires_at": 1})
+            # Commande de test Preview : expiration repoussée le temps du test, restaurée ensuite.
+            future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
             await client[db_name].orders.update_one(
                 {"download_token": tok},
-                {"$set": {"download_count": 0, "download_limit": SMALL_LIMIT}},
+                {"$set": {"download_count": 0, "download_limit": SMALL_LIMIT, "download_expires_at": future}},
             )
             client.close()
+            return (prev or {}).get("download_expires_at")
 
-        asyncio.get_event_loop().run_until_complete(_reset()) if False else asyncio.run(_reset())
+        original_expiry = asyncio.run(_reset())
 
         # Fire many concurrent GETs.
         from concurrent.futures import ThreadPoolExecutor
@@ -625,7 +643,7 @@ class TestAtomicDownloadLimit:
             client = motor.motor_asyncio.AsyncIOMotorClient(mongo_url)
             await client[db_name].orders.update_one(
                 {"download_token": tok},
-                {"$set": {"download_count": 0, "download_limit": 25}},
+                {"$set": {"download_count": 0, "download_limit": 25, "download_expires_at": original_expiry}},
             )
             client.close()
         asyncio.run(_restore())
@@ -713,3 +731,16 @@ class TestEmailRetryAndRecovery:
         r2 = s.get(f"{API}/admin/orders", headers=admin_headers)
         assert sum(1 for o in r2.json() if o.get("id") == oid) == 1
 
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_synthetic_data():
+    """Supprime les données synthétiques créées par ce module (Preview uniquement)."""
+    yield
+    from pymongo import MongoClient
+    from dotenv import load_dotenv
+    load_dotenv("/app/backend/.env")
+    d = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
+    q = {"email": {"$regex": r"^test_.*@(t|test)\.com$", "$options": "i"}}
+    d.contact_messages.delete_many(q)
+    d.newsletter.delete_many(q)

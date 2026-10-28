@@ -126,3 +126,13 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Comportement : suppression réelle en base ; l'adresse et ses previous_slugs → 404 « Article introuvable » (pas de redirection) ; retiré du sitemap dynamique ; articles de démo non recréés (seed_markers).
 - UI ArticlesPanel : bouton « Supprimer l'article » + ConfirmDeleteDialog (titre affiché) ; liste actualisée, sélection du 1er article ou état vide ; en cas d'erreur, dialogue et article conservés.
 - Tests : test_site_content.py (TestArticleDeletion) + edge 30/30 ; compliance 15/15, deletions 12/12, newsletter 22/22 ; parcours UI annuler/supprimer vérifié.
+
+## 2026-06 — Audit correctif (Preview, NON déployé)
+- Sitemap unique : public/sitemap.xml = index → /api/sitemap.xml ; robots inchangé (pointe /api/sitemap.xml).
+- SEO : canonical générique retiré de index.html ; Seo.jsx ajoute og:url + JSON-LD unique (#seo-jsonld) ; Product/Offer (offre seulement si purchasable) ; BlogPosting ; NotFound.jsx (route *, noindex) ; « Article introuvable » noindex.
+- Rate limit : IP = XFF[-3] (TRUSTED_PROXY_HOPS=2, chaîne client,CF,LB observée) ; spoof XFF ne contourne plus (prouvé).
+- ContactInput : name ≤100, email ≤254, subject ≤200, message ≤5000, name/message non vides ; maxLength côté formulaire.
+- En-têtes API : X-Frame-Options DENY, CSP frame-ancestors 'none', nosniff (middleware) ; HSTS/nosniff/Referrer-Policy déjà posés par Cloudflare ; pages HTML non configurables.
+- Tests : test_audit_fixes.py 15/15 ; test_lamaisondauben.py mis à jour (renonciation, prix 6,99, limites par IP réelle, liens expirés, nettoyage) 52/52 ; autres suites vertes. Build frontend OK.
+- Docs : PRODUCTION.md §8 (sitemap, SEO, redirections, rate limit, en-têtes, tests, sauvegardes Emergent).
+- Preview : 26 sessions Stripe TEST non payées créées par la suite historique (tx 162→188), non supprimées.

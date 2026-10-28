@@ -12,7 +12,7 @@ import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
 import { formatPrice, t } from "@/lib/i18n";
-import { WITHDRAWAL_CONSENT_VERSION } from "@/lib/site";
+import { WITHDRAWAL_CONSENT_VERSION, SITE_URL, absUrl } from "@/lib/site";
 import { WithdrawalConsent } from "@/components/WithdrawalConsent";
 
 export default function ProductDetail() {
@@ -56,7 +56,26 @@ export default function ProductDetail() {
 
   return (
     <>
-      <Seo title={product.seo?.title || `${product.name} — La Maison d'Auben`} description={product.seo?.description || product.short_description} path={`/boutique/${slug}`} />
+      <Seo
+        title={product.seo?.title || `${product.name} — La Maison d'Auben`}
+        description={product.seo?.description || product.short_description}
+        image={product.main_image ? mediaUrl(product.main_image) : ""}
+        path={`/boutique/${slug}`}
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.name,
+          description: product.short_description || product.description,
+          url: `${SITE_URL}/boutique/${slug}`,
+          ...(product.main_image ? { image: [absUrl(mediaUrl(product.main_image))] } : {}),
+          brand: { "@type": "Brand", name: "La Maison d'Auben" },
+          // Offre uniquement pour un produit réellement achetable (prix et fichier réels).
+          ...(product.purchasable ? { offers: {
+            "@type": "Offer", url: `${SITE_URL}/boutique/${slug}`, price: Number(product.price).toFixed(2),
+            priceCurrency: (product.currency || "eur").toUpperCase(), availability: "https://schema.org/InStock",
+          } } : {}),
+        }}
+      />
 
       <div className="container-app pt-6">
         <Link to="/boutique" className="inline-flex items-center gap-1.5 text-sm text-[#626D66] hover:text-[#1E3A2B]" data-testid="back-to-shop">

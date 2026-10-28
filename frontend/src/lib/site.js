@@ -1,4 +1,6 @@
 export const SITE_URL = "https://la-maison-dauben.com";
+// URL absolue (données structurées) : chemins relatifs rattachés au domaine officiel.
+export const absUrl = (u) => (!u ? "" : /^https?:\/\//.test(u) ? u : `${SITE_URL}${u.startsWith("/") ? "" : "/"}${u}`);
 
 // Doit rester identique au texte/version enregistrés côté serveur (backend/server.py).
 export const WITHDRAWAL_CONSENT_VERSION = "retractation-v1-2026-06";

@@ -2,16 +2,35 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ExternalLink, Save } from "lucide-react";
-import { adminContent, adminSaveContent, getProducts } from "@/lib/api";
+import { adminContent, adminSaveContent, getProducts, mediaUrl } from "@/lib/api";
 import { CONTENT_PAGES, defaultsFor } from "@/content/schema";
 import { ImageInput, ListEditor, ResetButton, inputCls, primaryCls, btnCls } from "@/pages/admin/site/fields";
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
+// Aperçu du favicon tel qu'il apparaîtra dans un onglet (16 px) et sur mobile (32 px), avant enregistrement.
+function FaviconPreview({ value }) {
+  const src = value ? mediaUrl(value) : "/images/favicon-32.png";
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl bg-[#FAF8F5] p-3 text-xs text-[#626D66]" data-testid="favicon-preview">
+      <span className="flex items-center gap-2 rounded-t-lg border border-b-0 border-[#E2DDD5] bg-white px-3 py-1.5 text-[#2C332E]">
+        <img src={src} alt="" className="h-4 w-4 object-contain" data-testid="favicon-preview-16" /> La Maison d'Auben
+      </span>
+      <img src={src} alt="" className="h-8 w-8 rounded object-contain" data-testid="favicon-preview-32" />
+      <span>{value ? "Nouveau favicon (enregistrez pour l'appliquer)" : "Favicon d'origine"}</span>
+    </div>
+  );
+}
+
 function FieldInput({ f, value, onChange, products }) {
   const id = `content-field-${f.name}`;
   if (f.type === "list") return <ListEditor value={value} item={f.item} fixed={f.fixed} onChange={onChange} testid={id} />;
-  if (f.type === "image") return <ImageInput value={value} onChange={onChange} testid={id} />;
+  if (f.type === "image") return (
+    <>
+      <ImageInput value={value} onChange={onChange} testid={id} />
+      {f.name === "favicon" && <FaviconPreview value={value} />}
+    </>
+  );
   if (f.type === "product") return (
     <select value={value || ""} onChange={(e) => onChange(e.target.value)} className={inputCls} data-testid={id}>
       <option value="">Automatique (1er produit disponible)</option>

@@ -18,7 +18,7 @@ _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _HTML = re.compile(r"<\s*/?\s*[a-zA-Z!?]")
 _BAD_URL = re.compile(r"\]\(\s*(javascript|data|vbscript):", re.I)
 MAX_STR = 30000
-PAGE_KEYS = {"home", "shop", "resources", "about", "faq", "contact", "footer", "legal-mentions-legales", "legal-cgv",
+PAGE_KEYS = {"home", "shop", "resources", "about", "faq", "contact", "header", "footer", "legal-mentions-legales", "legal-cgv",
              "legal-confidentialite", "legal-politique-cookies", "legal-produits-numeriques"}
 
 
@@ -83,7 +83,7 @@ async def update_content(key: str, inp: ContentUpdate, admin=Depends(get_current
         if not _FIELD.match(name):
             raise HTTPException(400, f"Nom de champ invalide : {name}")
         check_safe(value)
-        if name.endswith("image") and value and not (isinstance(value, str) and valid_image(value)):
+        if (name.endswith("image") or name == "favicon") and value and not (isinstance(value, str) and valid_image(value)):
             raise HTTPException(400, "Image : chemin ou URL https:// invalide.")
         if value is None:
             unsets[f"fields.{name}"] = ""

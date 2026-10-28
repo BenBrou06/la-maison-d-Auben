@@ -3,17 +3,18 @@ import { createPortal } from "react-dom";
 import { Link, useLocation, NavLink } from "react-router-dom";
 import { Menu, X, ShoppingBag } from "lucide-react";
 import { Logo } from "@/components/Logo";
-import { t } from "@/lib/i18n";
+import { useContent } from "@/lib/content";
 
 const NAV = [
-  { to: "/", label: t("nav.home"), end: true },
-  { to: "/boutique", label: t("nav.shop") },
-  { to: "/ressources", label: t("nav.resources") },
-  { to: "/a-propos", label: t("nav.about") },
-  { to: "/faq", label: t("nav.faq") },
+  { to: "/", key: "nav_home", end: true },
+  { to: "/boutique", key: "nav_shop" },
+  { to: "/ressources", key: "nav_resources" },
+  { to: "/a-propos", key: "nav_about" },
+  { to: "/faq", key: "nav_faq" },
 ];
 
 export const Header = () => {
+  const c = useContent("header");
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
@@ -50,7 +51,7 @@ export const Header = () => {
                 }`
               }
             >
-              {n.label}
+              {c[n.key]}
             </NavLink>
           ))}
         </nav>
@@ -60,7 +61,7 @@ export const Header = () => {
             data-testid="header-shop-btn"
             className="hidden items-center gap-2 rounded-xl bg-[#1E3A2B] px-5 py-2.5 text-sm font-medium text-[#FAF8F5] transition-all duration-200 hover:bg-[#3B6B4C] active:scale-[0.98] sm:inline-flex"
           >
-            <ShoppingBag className="h-4 w-4" /> {t("cta.shop")}
+            <ShoppingBag className="h-4 w-4" /> {c.shop_cta}
           </Link>
           <button
             onClick={() => setOpen(true)}
@@ -105,11 +106,11 @@ export const Header = () => {
                   }`
                 }
               >
-                {n.label}
+                {c[n.key]}
               </NavLink>
             ))}
             <Link to="/contact" data-testid="mobile-nav-contact" className="rounded-xl px-4 py-3.5 text-base font-medium text-[#2C332E] hover:bg-[#F2EDE4]">
-              {t("nav.contact")}
+              {c.nav_contact}
             </Link>
           </nav>
           <div className="mt-auto p-5">
@@ -118,7 +119,7 @@ export const Header = () => {
               data-testid="mobile-menu-shop-btn"
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-5 py-3.5 font-medium text-[#FAF8F5] hover:bg-[#3B6B4C]"
             >
-              <ShoppingBag className="h-5 w-5" /> {t("cta.shop")}
+              <ShoppingBag className="h-5 w-5" /> {c.shop_cta}
             </Link>
           </div>
         </div>

@@ -117,6 +117,18 @@ export const CONTENT_PAGES = [
     { name: "success_title", label: "Confirmation — titre", type: "text", default: "Message envoyé !" },
     { name: "success_text", label: "Confirmation — texte", type: "text", default: "Merci, nous revenons vers vous très vite." },
   ] },
+  { key: "header", label: "En-tête et onglet", path: "/", fields: [
+    { name: "favicon", label: "Favicon (icône de l'onglet) — image carrée PNG, JPEG ou WebP ; vide = favicon d'origine", type: "image", default: "" },
+    { name: "brand_line1", label: "Nom de la marque — 1re ligne", type: "text", default: "La Maison" },
+    { name: "brand_line2", label: "Nom de la marque — 2e ligne (en couleur)", type: "text", default: "d'Auben" },
+    { name: "nav_home", label: "Menu — Accueil", type: "text", default: "Accueil" },
+    { name: "nav_shop", label: "Menu — Boutique", type: "text", default: "Boutique" },
+    { name: "nav_resources", label: "Menu — Ressources", type: "text", default: "Ressources" },
+    { name: "nav_about", label: "Menu — À propos", type: "text", default: "À propos" },
+    { name: "nav_faq", label: "Menu — FAQ", type: "text", default: "FAQ" },
+    { name: "nav_contact", label: "Menu mobile — Contact", type: "text", default: "Contact" },
+    { name: "shop_cta", label: "Bouton de l'en-tête", type: "text", default: "Voir la boutique" },
+  ] },
   { key: "footer", label: "Pied de page & newsletter", path: "/", fields: [
     { name: "tagline", label: "Présentation", type: "textarea", default: "Des outils numériques simples, beaux et intelligents pour mieux organiser votre vie et vos projets." },
     { name: "badge_payment", label: "Badge paiement", type: "text", default: "Paiement sécurisé" },

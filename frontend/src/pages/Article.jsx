@@ -3,6 +3,7 @@ import { useParams, Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Clock, ArrowLeft, ArrowRight } from "lucide-react";
 import { Seo } from "@/components/Seo";
+import { SITE_URL, absUrl } from "@/lib/site";
 import { Reveal } from "@/components/Reveal";
 import { ProductCard } from "@/components/ProductCard";
 import { getArticle, getCategories, mediaUrl } from "@/lib/api";
@@ -17,14 +18,31 @@ export default function Article() {
 
   if (isLoading) return <div className="container-app py-24 text-center text-[#626D66]">Chargement…</div>;
   if (article?.redirect_to) return <Navigate to={`/ressources/${article.redirect_to}`} replace />;
-  if (isError || !article) return <div className="container-app py-24 text-center text-[#626D66]">Article introuvable.</div>;
+  if (isError || !article) return <div className="container-app py-24 text-center text-[#626D66]"><Seo title="Article introuvable — La Maison d'Auben" path={`/ressources/${slug}`} noindex />Article introuvable.</div>;
 
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "";
   const related = article.related_products || [];
 
   return (
     <>
-      <Seo title={article.seo_title || `${article.title} — La Maison d'Auben`} description={article.seo_description || article.excerpt} image={article.cover_image ? mediaUrl(article.cover_image) : ""} path={`/ressources/${slug}`} />
+      <Seo
+        title={article.seo_title || `${article.title} — La Maison d'Auben`}
+        description={article.seo_description || article.excerpt}
+        image={article.cover_image ? mediaUrl(article.cover_image) : ""}
+        path={`/ressources/${slug}`}
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "BlogPosting",
+          headline: article.title,
+          description: article.seo_description || article.excerpt,
+          ...(article.cover_image ? { image: [absUrl(mediaUrl(article.cover_image))] } : {}),
+          ...(article.published_at ? { datePublished: article.published_at } : {}),
+          ...(article.updated_at ? { dateModified: article.updated_at } : {}),
+          mainEntityOfPage: `${SITE_URL}/ressources/${slug}`,
+          author: { "@type": "Organization", name: "La Maison d'Auben", url: SITE_URL },
+          publisher: { "@type": "Organization", name: "La Maison d'Auben", url: SITE_URL },
+        }}
+      />
 
       <article className="container-app mx-auto max-w-3xl py-10 sm:py-14">
         <Link to="/ressources" className="inline-flex items-center gap-1.5 text-sm text-[#626D66] hover:text-[#1E3A2B]"><ArrowLeft className="h-4 w-4" /> Toutes les ressources</Link>

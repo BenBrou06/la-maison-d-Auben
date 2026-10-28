@@ -9,7 +9,7 @@ from typing import List, Optional
 import stripe
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Response
 from starlette.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, Field, StrictBool
+from pydantic import BaseModel, EmailStr, Field, StrictBool, field_validator
 from pymongo.errors import DuplicateKeyError
 from starlette.responses import JSONResponse
 
@@ -103,10 +103,16 @@ _rl_store = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
-    xff = request.headers.get("x-forwarded-for", "")
-    if xff:
-        return xff.split(",")[0].strip()
+    # Chaîne observée (Preview, même infra que la prod) : X-Forwarded-For = "<valeurs client éventuelles>,
+    # <IP client ajoutée par Cloudflare>, <IP du nœud Cloudflare>, <IP du load balancer>". Les valeurs de gauche
+    # sont fournies par le client (falsifiables) : on prend la 3e en partant de la droite, posée par Cloudflare.
+    parts = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+    if len(parts) >= TRUSTED_PROXY_HOPS + 1:
+        return parts[-(TRUSTED_PROXY_HOPS + 1)]
     return request.client.host if request.client else "unknown"
+
+
+TRUSTED_PROXY_HOPS = 2
 
 
 def check_rate(request: Request, bucket: str, limit: int, window: int = 60):
@@ -155,10 +161,17 @@ class UnsubscribeInput(BaseModel):
 
 
 class ContactInput(BaseModel):
-    name: str
-    email: EmailStr
-    subject: str = ""
-    message: str
+    name: str = Field(min_length=1, max_length=100)
+    email: EmailStr = Field(max_length=254)
+    subject: str = Field("", max_length=200)
+    message: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("name", "message")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Champ obligatoire.")
+        return v.strip()
 
 
 class CheckoutInput(BaseModel):
@@ -1029,6 +1042,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 api.include_router(newsletter_router)
 api.include_router(content_router)
 app.include_router(api)
+
+
+@app.middleware("http")
+async def api_security_headers(request: Request, call_next):
+    # Réponses de l'API uniquement (JSON/XML/fichiers) : jamais intégrables dans une page tierce.
+    # HSTS, nosniff et Referrer-Policy sont déjà ajoutés par l'hébergeur (Cloudflare/Emergent) ; les pages HTML
+    # du site sont servies par l'hébergeur : leurs en-têtes ne sont pas configurables ici.
+    response = await call_next(request)
+    if request.url.path.startswith("/api"):
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    return response
 
 # CORS : configurable via CORS_ORIGINS. "*" (ou vide) = reflet de l'origine (preview/dev).
 # En production, définir CORS_ORIGINS="https://auben-preview-shop.emergent.host" (+ autres si besoin).

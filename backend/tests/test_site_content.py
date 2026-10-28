@@ -184,6 +184,32 @@ class TestArticleDeletion:
         assert requests.get(f"{API}/articles/{keep}").json()["excerpt"] == "Toujours là"
 
 
+class TestHeaderAndFavicon:
+    def test_default_favicon_files_served(self):
+        for path in ("/images/favicon-32.png", "/images/apple-touch-icon.png", "/images/favicon-default.png"):
+            r = requests.get(BASE + path)
+            assert r.status_code == 200 and r.headers.get("content-type", "").startswith("image/png"), path
+        html = open("/app/frontend/public/index.html").read()
+        assert 'id="site-favicon"' in html and "favicon-32.png" in html and 'id="site-apple-icon"' in html
+
+    def test_favicon_and_header_texts_saved(self, h):
+        assert requests.put(f"{API}/admin/content/header", headers=h, json={"fields": {"favicon": "//evil.example/x.png"}}).status_code == 400
+        assert requests.put(f"{API}/admin/content/header", headers=h, json={"fields": {"nav_shop": "<b>x</b>"}}).status_code == 400
+        assert requests.put(f"{API}/admin/content/header", json={"fields": {"nav_shop": "x"}}).status_code == 401
+        up = requests.post(f"{API}/admin/upload/image", headers=h,
+                           files={"file": ("fav.png", open("/app/frontend/public/images/favicon-32.png", "rb"), "image/png")})
+        assert up.status_code == 200
+        path = up.json()["path"]
+        r = requests.put(f"{API}/admin/content/header", headers=h, json={"fields": {"favicon": path, "nav_shop": "Magasin fictif"}})
+        assert r.status_code == 200
+        pub = requests.get(f"{API}/content").json()["header"]
+        assert pub == {"favicon": path, "nav_shop": "Magasin fictif"}
+        assert requests.get(f"{API}/media/{path}").status_code == 200
+        assert "footer" not in requests.get(f"{API}/content").json()  # pied de page non touché
+        requests.put(f"{API}/admin/content/header", headers=h, json={"fields": {"favicon": None, "nav_shop": None}})
+        assert requests.get(f"{API}/content").json().get("header", {}) == {}
+
+
 class TestSitemapAndCommerce:
     def test_sitemap_contents(self):
         xml = requests.get(f"{API}/sitemap.xml").text

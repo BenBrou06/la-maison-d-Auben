@@ -17,6 +17,8 @@ import Legal from "@/pages/Legal";
 import NewsletterUnsubscribe from "@/pages/NewsletterUnsubscribe";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
+import NotFound from "@/pages/NotFound";
+import { SiteFavicon } from "@/components/SiteFavicon";
 
 const withLayout = (el) => <Layout>{el}</Layout>;
 
@@ -24,6 +26,7 @@ function App() {
   return (
     <div className="App">
       <Toaster position="top-center" richColors closeButton />
+      <SiteFavicon />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={withLayout(<Home />)} />
@@ -45,6 +48,7 @@ function App() {
           <Route path="/newsletter/desinscription" element={withLayout(<NewsletterUnsubscribe />)} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="*" element={withLayout(<NotFound />)} />
         </Routes>
       </BrowserRouter>
     </div>

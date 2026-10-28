@@ -88,3 +88,42 @@ En preview, le service e-mail Emergent n'accepte que l'adresse vendeur vérifié
 adresses de test) — l'e-mail **vendeur** fonctionne. En production, **re-vérifier** que l'e-mail
 **client** part bien vers l'adresse de l'acheteur réel (domaine d'envoi correctement configuré).
 Les liens des e-mails utilisent l'origine réelle de l'achat / `PUBLIC_BASE_URL` — aucun domaine preview en dur.
+
+## 8. Exploitation (audit 2026-06)
+
+### Sitemap
+- Source unique : `GET /api/sitemap.xml` (backend/content_admin.py) — pages publiques, toutes les fiches produits, articles publiés uniquement ; jamais admin, paiement, téléchargement, désinscription.
+- `frontend/public/sitemap.xml` est un *index* qui pointe vers `/api/sitemap.xml` ; `robots.txt` déclare `Sitemap: https://la-maison-dauben.com/api/sitemap.xml`.
+- À soumettre dans Google Search Console : `https://la-maison-dauben.com/api/sitemap.xml` (ou l'index `/sitemap.xml`).
+
+### Métadonnées & données structurées
+- `components/Seo.jsx` pose par page : title, description, canonical, og:url, robots (noindex sur paiement, téléchargement, désinscription, 404), et un JSON-LD unique (`#seo-jsonld`) retiré en quittant la page.
+- Product (+ Offer seulement si le produit est réellement achetable : prix et fichier réels), BlogPosting pour les articles. Aucune note/avis.
+- `index.html` ne contient plus de canonical générique (il pointait toutes les pages vers l'accueil).
+- Rendu côté client : Google exécute le JavaScript ; un pré-rendu n'est pas mis en place (bénéfice à réévaluer si l'indexation pose problème dans Search Console).
+
+### Redirections d'articles
+- Slug modifié → l'ancien slug est conservé dans `previous_slugs` ; `GET /api/articles/{ancien}` renvoie `{"redirect_to": nouveau}` et le site redirige (remplacement d'historique, canonical = nouvelle URL).
+- Pas de 301 HTTP possible : les pages du site sont servies par l'hébergeur (application monopage), le backend ne reçoit que `/api/*`. Un 301 nécessiterait une règle chez l'hébergeur/Cloudflare.
+- Article supprimé ou inexistant → page « Article introuvable » en noindex ; URL inconnue → page 404 noindex. Jamais de redirection vers l'accueil.
+
+### Limitation de débit
+- En mémoire, par processus (1 worker) : remise à zéro au redémarrage, non partagée entre instances.
+- Limites/minute/IP : connexion admin 5, contact 5, newsletter 10, désinscription 10, paiement 20.
+- IP : 3e valeur en partant de la droite de `X-Forwarded-For` (posée par Cloudflare devant le load balancer, chaîne observée en Preview) ; les valeurs ajoutées par le client sont ignorées. Si l'infrastructure change (nombre de proxys), ajuster `TRUSTED_PROXY_HOPS` dans server.py.
+
+### En-têtes de sécurité
+- Hébergeur/Cloudflare (vérifié sur la-maison-dauben.com) : `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`.
+- Application (réponses `/api/*` uniquement) : `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `nosniff`.
+- Pages HTML : pas de protection anti-iframe ni de CSP (non configurables depuis l'application) → à demander à Emergent / règle Cloudflare.
+
+### Tests (Preview uniquement, jamais contre la production)
+- `cd backend && python -m pytest tests/<fichier>.py -q -n 0` — un fichier à la fois (limites de débit partagées par IP ; certains tests attendent 61 s).
+- Fichiers : test_audit_fixes, test_site_content(+_edge), test_compliance_rgpd, test_admin_deletions, test_newsletter_admin, test_lamaisondauben (historique, mis à jour : renonciation obligatoire, prix 6,99).
+- Données synthétiques préfixées (fictif-…, test_…@t.com) supprimées en fin de module ; paiements en mode Stripe TEST uniquement ; aucun e-mail réel (NEWSLETTER_DRY_RUN en Preview).
+
+### Sauvegardes (selon le support Emergent, à faire confirmer par écrit)
+- MongoDB de production : sauvegardes automatiques gérées par Emergent (horaires 7 j, quotidiennes 7 j, hebdomadaires 4 sem., mensuelles 12 mois, annuelle 1 an) + restauration à un instant précis sur 7 jours.
+- Restauration : uniquement via support@emergent.sh (procédure non documentée publiquement). Le « rollback » du panneau de publication ne restaure que le code, pas les données.
+- Object Storage (fichiers Excel, images) : chiffré, fichiers non supprimables, sauvegarde non documentée → à confirmer auprès d'Emergent.
+- Code : GitHub (Save to GitHub).

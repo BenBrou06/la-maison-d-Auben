@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only test of the change tracking in the admin dashboard (Pages, Articles, FAQ, Contenu produits) using Playwright on the public URL. Everything requested passed: no indicators in consultation mode; in edit mode, indicators appear only when a value really differs; 'Annuler ce changement' goes back to the LAST SAVED value, also checked after a save; indicators disappear right after a successful save; 'Enregistrer (n)' and the left-column badges count correctly; window.confirm appears for Terminer, switching item in the left list, switching admin tab and Retour à la liste (dismiss keeps the edits, accept discards them, and no prompt when nothing is pending); after a simulated 500 error on save the modified state is kept (Pages and Produits). Saving a product content change left price, status, purchasable and file unchanged (before/after API diff was empty). All real data was restored and the synthetic article was deleted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin > FAQ", "issues": ["Reordering or deleting a question raises the count ('1 non enregistré') but no item shows a 'modifié' badge and there is no per-item 'Annuler ce changement'. Only 'Annuler les modifications' undoes it. Acceptable, but the user may not see what changed."]},
+      {"screen": "Admin > Articles (consultation)", "issues": ["The up/down/delete buttons of the content blocks stay visible (disabled) in consultation mode. FAQ hides them (fixed={!s.editing}). Minor inconsistency."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: hide the ListEditor controls in Articles consultation mode (pass fixed={!s.editing}) to match FAQ.",
+    "Optional: show a hint when the FAQ count comes only from reordering or deleting questions.",
+    "Data hygiene: product budget-couple has description 'desc T1', probably left over from an earlier test iteration; check and clean it up."
+  ],
+  "critical_code_review_comments": [
+    "editTracking.useEditSession: when the saved data changes (new sig), base and draft are both reset. A background refetch that returns different data during an edit (e.g. another admin tab) would silently overwrite unsaved changes. Low risk for a single admin.",
+    "ContentPanel has no pending badge in the product list. Acceptable because the editor replaces the list, so there is nothing to show it in.",
+    "Pages save sends null when the value equals the schema default, which clears the override. Verified: the home hero_eyebrow override was removed after the restore."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100%"},
+  "seed_data_creation": "Created the article 'TEST suivi modifs' (test-suivi-modifs, unpublished) and deleted it with SUPPRIMER. Temporarily changed and then restored: home hero_eyebrow, FAQ faq-1 question, budget-mensuel short_description. Verified restored via API.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Admin login at /admin/login (credentials in /app/memory/test_credentials.md). Dialogs are native window.confirm, handled with page.on('dialog'). The selectors used are listed in the review request and all exist. To simulate save errors, intercept PUT/POST on **/api/admin/content/** and **/api/admin/products/** with page.route."
+}

@@ -1,0 +1,24 @@
+{
+  "summary": "Frontend E2E test of the common site logo (header/footer/mobile drawer/admin/favicon/apple-touch-icon) driven by Pages → 'En-tête et onglet' → 'Logo du site'. All requested flows pass: default state, upload + preview before save (no site change before save), save propagates to /, /boutique, /a-propos, mobile 390 + drawer, admin dashboard and /admin/login; favicon + apple icon point to the same /api/media URL (200); reset ('Texte d'origine') + save restores logo-176.png / favicon-32.png and the header doc fields are {} again. Logo stays 44x44 desktop and mobile, no horizontal overflow. Smoke (home, boutique 6 cards, product buy button disabled until consent, contact form) OK.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Pages → logo preview", "issues": ["A non-square image (e.g. product-desk.jpg 900px wide) appears letterboxed inside the 44px box (object-contain). That's expected, but nothing in the UI warns about it apart from the label text 'image carrée'. You could add a short hint or offer a crop."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SitePagesPanel FaviconPreview hardcodes '/images/logo-176.png' instead of importing DEFAULT_LOGO from components/Logo.jsx (small DRY issue).",
+    "backend/tests/test_site_content.py restores site_content by re-inserting a snapshot. While it ran at the same time as this UI test, it silently overwrote my admin save (first attempt looked like a lost save). Avoid running that pytest at the same time as manual or UI tests.",
+    "Preview responses show 'access-control-allow-origin: *' (CORS_ORIGINS='*' with STRIPE_MODE=test). This is expected in preview; the production rule is covered by unit tests."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100%"},
+  "seed_data_creation": "Uploaded 2 media images (product-desk.jpg) to the media collection. The header logo was set and then reset; the final site_content 'header' fields are {} with no favicon field.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Logo testids: brand-logo-img (header, footer, mobile drawer inside mobile-menu-panel; footer img has width 0 on desktop only because of a hidden duplicate, which is normal). Admin: admin-tab-pages → content-page-header → content-field-favicon-file / -input, favicon-preview, logo-preview-header, favicon-preview-16/32, content-reset-favicon, content-save-btn. The product page shows 6,99 € while test_credentials mentions 7,99 €; I did not verify this and did not change it."
+}

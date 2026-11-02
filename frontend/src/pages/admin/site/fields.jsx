@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { ArrowUp, ArrowDown, Trash2, Plus, ImagePlus, RotateCcw } from "lucide-react";
 import { adminUploadImage, mediaUrl } from "@/lib/api";
 
-export const inputCls = "w-full rounded-xl border border-[#E2DDD5] bg-white px-3.5 py-2.5 text-sm text-[#2C332E] focus:border-[#3B6B4C] focus:outline-none";
+export const inputCls = "w-full rounded-xl border border-[#E2DDD5] bg-white px-3.5 py-2.5 text-sm text-[#2C332E] focus:border-[#3B6B4C] focus:outline-none disabled:cursor-default disabled:bg-[#FAF8F5] disabled:text-[#4A544D]";
 export const btnCls = "inline-flex items-center gap-1.5 rounded-xl border border-[#E2DDD5] bg-white px-3 py-2 text-xs font-medium text-[#1E3A2B] hover:bg-[#FAF8F5] disabled:opacity-50";
 export const primaryCls = "inline-flex items-center gap-2 rounded-xl bg-[#1E3A2B] px-5 py-2.5 text-sm font-medium text-[#FAF8F5] hover:bg-[#3B6B4C] disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -35,14 +35,15 @@ export function ImageInput({ value, onChange, testid }) {
   );
 }
 
-export function ListEditor({ value = [], item, fixed, onChange, testid, newItem }) {
+export function ListEditor({ value = [], item, fixed, onChange, testid, newItem, isItemChanged, onRestoreItem }) {
   const set = (i, name, v) => onChange(value.map((it, k) => (k === i ? { ...it, [name]: v } : it)));
   return (
     <div className="space-y-3" data-testid={testid}>
       {value.map((it, i) => (
         <div key={i} className="rounded-xl border border-[#E2DDD5] bg-[#FAF8F5] p-3" data-testid={`${testid}-item-${i}`}>
           <div className="mb-2 flex items-center justify-between text-xs text-[#626D66]">
-            <span>#{i + 1}</span>
+            <span>#{i + 1}{isItemChanged?.(i) && <span className="ml-2 text-[#D4A359]" data-testid={`${testid}-modified-${i}`}>modifié</span>}</span>
+            {isItemChanged?.(i) && onRestoreItem && <ResetButton onClick={() => onRestoreItem(i)} testid={`${testid}-reset-${i}`} />}
             {!fixed && (
               <span className="flex gap-1">
                 <button type="button" onClick={() => onChange(move(value, i, -1))} className={btnCls} aria-label="Monter" data-testid={`${testid}-up-${i}`}><ArrowUp className="h-3.5 w-3.5" /></button>
@@ -78,6 +79,6 @@ export function ListEditor({ value = [], item, fixed, onChange, testid, newItem 
 
 export const ResetButton = ({ onClick, testid }) => (
   <button type="button" onClick={onClick} className="inline-flex items-center gap-1 text-[11px] text-[#626D66] hover:text-[#1E3A2B]" data-testid={testid}>
-    <RotateCcw className="h-3 w-3" /> Texte d'origine
+    <RotateCcw className="h-3 w-3" /> Annuler ce changement
   </button>
 );

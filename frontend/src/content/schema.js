@@ -118,7 +118,7 @@ export const CONTENT_PAGES = [
     { name: "success_text", label: "Confirmation — texte", type: "text", default: "Merci, nous revenons vers vous très vite." },
   ] },
   { key: "header", label: "En-tête et onglet", path: "/", fields: [
-    { name: "favicon", label: "Favicon (icône de l'onglet) — image carrée PNG, JPEG ou WebP ; vide = favicon d'origine", type: "image", default: "" },
+    { name: "favicon", label: "Logo du site — utilisé dans l'en-tête, le pied de page, l'admin et comme favicon (image carrée PNG, JPEG ou WebP ; vide = logo officiel)", type: "image", default: "" },
     { name: "brand_line1", label: "Nom de la marque — 1re ligne", type: "text", default: "La Maison" },
     { name: "brand_line2", label: "Nom de la marque — 2e ligne (en couleur)", type: "text", default: "d'Auben" },
     { name: "nav_home", label: "Menu — Accueil", type: "text", default: "Accueil" },

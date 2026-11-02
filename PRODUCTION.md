@@ -127,3 +127,39 @@ Les liens des e-mails utilisent l'origine réelle de l'achat / `PUBLIC_BASE_URL`
 - Restauration : uniquement via support@emergent.sh (procédure non documentée publiquement). Le « rollback » du panneau de publication ne restaure que le code, pas les données.
 - Object Storage (fichiers Excel, images) : chiffré, fichiers non supprimables, sauvegarde non documentée → à confirmer auprès d'Emergent.
 - Code : GitHub (Save to GitHub).
+
+## 9. Second audit (2026-06)
+
+### CORS (backend/cors_config.py, appliqué en fin de server.py)
+- Production (`STRIPE_MODE=live`) : jamais d'origine générique. `CORS_ORIGINS` vide ou `*` est ignoré (avertissement au démarrage) et remplacé par l'origine de `PUBLIC_BASE_URL` + variante www.
+- **Valeur à configurer en production** (Secrets du déploiement) : `CORS_ORIGINS=https://la-maison-dauben.com,https://www.la-maison-dauben.com`
+- Aucun credential cross-origin (`allow_credentials=False`) : l'admin s'authentifie par en-tête `Authorization`. Méthodes GET/POST/PUT/PATCH/DELETE/OPTIONS, en-têtes Authorization et Content-Type uniquement. Origine refusée → pas d'en-tête `Access-Control-Allow-Origin` (le navigateur bloque la lecture), préflight → 400.
+- L'adresse `auben-preview-shop.emergent.host` n'est plus autorisée (décision propriétaire) : le site doit être consulté sur la-maison-dauben.com.
+- Preview (mode test) : `*` sans credentials.
+
+### En-têtes des pages HTML (hors code — Cloudflare)
+Les pages HTML sont servies par l'infrastructure Emergent. Règle Cloudflare recommandée (Rules → Transform Rules → Modify Response Header, hostname = la-maison-dauben.com) :
+- `X-Frame-Options: SAMEORIGIN` et `Content-Security-Policy: frame-ancestors 'self'` (anti-iframe).
+- CSP complète non recommandée sans inventaire (Stripe Checkout = redirection vers checkout.stripe.com, pas de script Stripe sur le site ; script emergent-main.js seulement en Preview ; polices et images locales ; images produits via /api/media). Si ajoutée, commencer en `Content-Security-Policy-Report-Only`.
+- HSTS, nosniff, Referrer-Policy : déjà présents (Cloudflare).
+- Ne pas appliquer d'anti-iframe sur le domaine Preview (l'éditeur Emergent affiche la Preview dans une iframe).
+
+### Redirections 301 d'anciens slugs
+- Impossible dans l'application (pages servies par l'hébergeur). Solution : Cloudflare → Rules → Redirect Rules (ou Bulk Redirects), une règle par ancien slug : `https://la-maison-dauben.com/ressources/<ancien>` → `https://la-maison-dauben.com/ressources/<nouveau>`, 301, sans conserver la query. Les anciens slugs sont listés dans `previous_slugs` (admin → Articles). Ne jamais rediriger un article supprimé (404).
+
+### Logo commun
+- Pages → En-tête et onglet → « Logo du site » : une seule image pour l'en-tête, le pied de page, l'admin et le favicon. Défaut : `/images/logo-176.png` (copie redimensionnée du logo officiel `favicon-default.png`) ; favicon statique `/images/favicon-32.png` pour Google.
+
+### Dépendances (pip-audit, Preview)
+- `starlette 0.37.2` (via `fastapi 0.110.1`) : avis publiés (corrigés ≥ 0.40/0.47). Mise à jour fastapi+starlette recommandée dans une tâche dédiée avec tests complets.
+- `litellm 1.80.0`, `pymongo`, `ecdsa`, `python-jose 3.5.0` : avis publiés. `python-jose` n'est pas utilisé par le code (auth = PyJWT) ; litellm vient d'emergentintegrations (non exposé aux saisies). Non modifiés.
+
+### Mentions légales — hébergeur (à compléter dès réception d'Emergent)
+- Raison sociale (Emergent Labs Inc. indiquée), adresse postale complète, numéro de téléphone (LCEN art. 6). Admin → Pages → Mentions légales → section Hébergement.
+
+### Sauvegardes — questions à poser à support@emergent.sh
+1. Base MongoDB de production : fréquence, durée de conservation, chiffrement, restauration complète ou d'une collection, délai.
+2. Object Storage (fichiers Excel vendus, images) : sauvegarde et restauration d'un objet supprimé ou écrasé ?
+3. Procédure écrite de restauration et possibilité de restaurer sur une base séparée pour vérification.
+- Rollback (code) ≠ restauration des données.
+- Test de restauration isolé proposé : `mongodump` de la base Preview → `mongorestore --nsFrom 'DB.*' --nsTo 'DB_restore.*'` → comparer les nombres de documents par collection, puis supprimer DB_restore.

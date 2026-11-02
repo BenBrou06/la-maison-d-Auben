@@ -136,3 +136,24 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Tests : test_audit_fixes.py 15/15 ; test_lamaisondauben.py mis à jour (renonciation, prix 6,99, limites par IP réelle, liens expirés, nettoyage) 52/52 ; autres suites vertes. Build frontend OK.
 - Docs : PRODUCTION.md §8 (sitemap, SEO, redirections, rate limit, en-têtes, tests, sauvegardes Emergent).
 - Preview : 26 sessions Stripe TEST non payées créées par la suite historique (tx 162→188), non supprimées.
+
+## 2026-06 — Second audit (Preview, NON déployé)
+- CORS : backend/cors_config.py ; live → jamais "*", fallback PUBLIC_BASE_URL + www ; allow_credentials=False ; méthodes/en-têtes explicites. Prod à configurer : CORS_ORIGINS=https://la-maison-dauben.com,https://www.la-maison-dauben.com.
+- Logo commun : champ header.favicon = « Logo du site » → Logo.jsx (en-tête, pied, admin) + SiteFavicon ; défaut /images/logo-176.png (logo officiel). Aperçu 44/16/32 px.
+- Tests : tests/test_second_audit.py 5/5 ; iteration_14 UI OK ; test_site_content 12/12, test_audit_fixes 15/15, compliance 15/15.
+- PRODUCTION.md §9 : CORS, règles Cloudflare (anti-iframe, 301), dépendances (starlette 0.37.2 à mettre à jour), hébergeur, questions sauvegardes.
+
+## 2026-06 — Admin Pages/Articles : mode édition et suivi (Preview, NON déployé)
+- content/adminLabels.js : groupes, intitulés clairs, aides « Visible : … » (présentation uniquement, schema.js inchangé).
+- SitePagesPanel : Modifier/Terminer, fieldset en lecture seule, « Texte d origine » + Enregistrer/Annuler seulement en édition ; suivi modif. inchangé.
+- ArticlesPanel : encadré Statut / Date de publication / Dernière modification ; Modifier/Terminer ; « modifié » par champ ; Enregistrer (X) ; Annuler. Backend inchangé (updated_at à chaque enregistrement, published_at intact).
+- fields.jsx : style des champs désactivés.
+- Tests : test_site_content 13/13 (TestArticleEditTracking) ; iteration_15 UI 100%.
+
+## 2026-06 — Suivi des modifications harmonisé (Contenu produits, Pages, Articles, FAQ) (Preview, NON déployé)
+- site/editTracking.jsx : useEditSession commun ; référence = dernière version enregistrée (commit() après succès, rechargement identique ignoré) ; confirmLeave() pour changement d onglet admin.
+- Consultation : aucun indicateur ; édition : « modifié », « Annuler ce changement » (ex « Texte d origine »), Enregistrer (n), Annuler les modifications ; compteur gauche « n non enregistré(s) ».
+- Confirmation avant abandon : Terminer, changement d élément, changement d onglet, Retour à la liste produits.
+- Produits : envoi des seuls champs modifiés (prix/statut/fichier jamais touchés). FAQ : suivi par question + note suppressions/ordre.
+- Tests : iteration_16 frontend 100 % ; aucun historique persistant ajouté ; aucun déploiement.
+

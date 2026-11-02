@@ -1,0 +1,26 @@
+{
+  "summary": "Frontend-only test of the product-refs incident fixes (Preview). Admin Products tab: budget-mensuel and suivi-sportif show 'Prêt à la vente' and status 'Disponible' (prices 6.99 / 4.99, real files). travel-manager, car-cost, first-apartment and budget-couple show 'Non achetable pour l'instant :' with 2 issues each ('Prix manquant ou non positif.', 'Aucun vrai fichier téléchargeable.'), status 'Bientôt disponible', and no sync button. Price inputs and status badges render correctly. /boutique/suivi-sportif shows 4,99 €. The buy button stays disabled until the withdrawal box is ticked, then redirects to checkout.stripe.com (cs_test_, Sandbox badge) showing €4.99 (and $5.81 converted). This worked at desktop 1920x800 and mobile 390x844. /boutique/budget-mensuel redirects to Stripe at €6.99 (and $8.14). /boutique/car-cost has no buy button, no consent checkbox, and shows the 'Bientôt disponible' block and the coming-soon CTA. No payment was made, and no product data or files were changed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Product pages", "issues": ["suivi-sportif and car-cost have no main image yet, so they show the placeholder 'CAPTURE À VENIR'. This is content, not a bug."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: the 'Synchroniser avec Stripe' button (can_sync=true) could not be tested in the UI because no product is currently eligible. Confirm it through the backend tests or a controlled Preview mismatch.",
+    "Optional: suivi-sportif's downloadable file is named 'suivi_test.xlsx'. Check that this is the intended real file before any publication."
+  ],
+  "critical_code_review_comments": [
+    "ProductsPanel: if adminProductsHealth fails, the health block silently disappears (ProductHealth returns null). There is no error or loading state, so an admin could miss anomalies. Consider a small 'Diagnostic indisponible' message.",
+    "The sync button has no disabled or in-flight state, so double clicks can send duplicate Stripe sync calls."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped as requested)", "frontend": "100%"},
+  "seed_data_creation": "None. 3 unpaid Stripe TEST checkout sessions were created (cs_test_) and abandoned.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Admin creds in /app/memory/test_credentials.md. Login testids: admin-email-input, admin-password-input, admin-login-submit; tab admin-tab-products. Withdrawal checkbox testid: withdrawal-consent-checkbox; buy button: buy-now-btn. Prices are rendered with NBSP ('4,99\\u00a0€'). The Stripe page shows a USD/EUR currency choice for US browsers."
+}

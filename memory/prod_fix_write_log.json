@@ -1,0 +1,52 @@
+[
+ {
+  "slug": "suivi-sportif",
+  "http": 200,
+  "lookup_key": "suivi_sportif",
+  "currency": "eur",
+  "price": 5.99,
+  "status": "available",
+  "stripe_call": false,
+  "ok": true
+ },
+ {
+  "slug": "travel-manager",
+  "http": 200,
+  "lookup_key": "travel_manager",
+  "currency": "eur",
+  "price": null,
+  "status": "coming_soon",
+  "stripe_call": false,
+  "ok": true
+ },
+ {
+  "slug": "car-cost",
+  "http": 200,
+  "lookup_key": "car_cost",
+  "currency": "eur",
+  "price": null,
+  "status": "coming_soon",
+  "stripe_call": false,
+  "ok": true
+ },
+ {
+  "slug": "first-apartment",
+  "http": 200,
+  "lookup_key": "first_apartment",
+  "currency": "eur",
+  "price": null,
+  "status": "coming_soon",
+  "stripe_call": false,
+  "ok": true
+ },
+ {
+  "slug": "budget-couple",
+  "http": 200,
+  "lookup_key": "budget_couple",
+  "currency": "eur",
+  "price": null,
+  "status": "coming_soon",
+  "stripe_call": false,
+  "ok": true
+ }
+]

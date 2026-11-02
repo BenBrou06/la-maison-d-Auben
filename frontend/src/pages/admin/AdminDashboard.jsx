@@ -14,7 +14,7 @@ import { confirmLeave } from "@/pages/admin/site/editTracking";
 import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import {
   adminMe, adminOrders, adminMessages, getProducts, adminDeleteMessage, adminDeleteOrder,
-  adminUploadProductFile, adminDeleteProductFile, adminUpdateProduct, api,
+  adminUploadProductFile, adminDeleteProductFile, adminUpdateProduct, adminProductsHealth, adminProductStripeSync, api,
 } from "@/lib/api";
 import { formatPrice } from "@/lib/i18n";
 
@@ -101,7 +101,22 @@ function Panel({ title, children }) {
 
 function ProductsPanel({ qc }) {
   const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => getProducts() });
-  const refresh = () => qc.invalidateQueries({ queryKey: ["products"] });
+  const { data: health = [] } = useQuery({ queryKey: ["products-health"], queryFn: adminProductsHealth });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["products"] });
+    qc.invalidateQueries({ queryKey: ["products-health"] });
+  };
+
+  const syncStripe = async (slug) => {
+    const p = products.find((x) => x.slug === slug);
+    const amount = p?.price != null ? `${Number(p.price).toFixed(2).replace(".", ",")} € TTC` : "le prix enregistré";
+    if (!window.confirm(`Synchroniser « ${p?.name || slug} » avec Stripe ?\n\nUn prix Stripe actif de ${amount} sera créé si besoin ; un ancien prix non conforme sera désactivé. Rien n'est créé si un prix conforme existe déjà.`)) return;
+    try {
+      await adminProductStripeSync(slug);
+      toast.success("Prix Stripe synchronisé.");
+      refresh();
+    } catch (e) { toast.error(e.response?.data?.detail || "Échec de la synchronisation Stripe."); }
+  };
 
   const uploadFile = async (slug, file) => {
     const fd = new FormData();
@@ -151,14 +166,36 @@ function ProductsPanel({ qc }) {
       </p>
       <div className="space-y-4">
         {products.map((p) => (
-          <ProductRow key={p.slug} p={p} onUploadFile={uploadFile} onDeleteFile={deleteFile} onUploadImage={uploadImage} onSavePrice={savePrice} />
+          <ProductRow key={p.slug} p={p} health={health.find((h) => h.slug === p.slug)} onSync={syncStripe} onUploadFile={uploadFile} onDeleteFile={deleteFile} onUploadImage={uploadImage} onSavePrice={savePrice} />
         ))}
       </div>
     </Panel>
   );
 }
 
-function ProductRow({ p, onUploadFile, onDeleteFile, onUploadImage, onSavePrice }) {
+function ProductHealth({ slug, health, onSync }) {
+  if (!health) return null;
+  const notes = [...health.issues.map((i) => i.message), ...health.warnings];
+  if (!notes.length) {
+    return <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-[#3B6B4C]" data-testid={`admin-product-ready-${slug}`}><CheckCircle2 className="h-4 w-4" /> Prêt à la vente</p>;
+  }
+  return (
+    <div className="mt-3 rounded-lg border border-[#EBD9B8] bg-[#FBF5EA] p-3 text-xs text-[#7A5622]" data-testid={`admin-product-issues-${slug}`}>
+      <p className="font-medium">{health.issues.length ? "Non achetable pour l'instant :" : "À vérifier :"}</p>
+      <ul className="mt-1 list-disc pl-4">
+        {notes.map((n, i) => <li key={i} data-testid={`admin-product-issue-${slug}-${i}`}>{n}</li>)}
+      </ul>
+      {health.can_sync && (
+        <button onClick={() => onSync(slug)} data-testid={`admin-product-sync-${slug}`}
+          className="mt-2 rounded-lg border border-[#D9BF8F] px-3 py-1.5 font-medium hover:bg-[#F6ECD9]">
+          Synchroniser avec Stripe
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ProductRow({ p, health, onSync, onUploadFile, onDeleteFile, onUploadImage, onSavePrice }) {
   const [price, setPrice] = useState(p.price ?? "");
   useEffect(() => { setPrice(p.price ?? ""); }, [p.price]);
   const available = !!p.purchasable;
@@ -181,6 +218,7 @@ function ProductRow({ p, onUploadFile, onDeleteFile, onUploadImage, onSavePrice 
             : <><FileSpreadsheet className="h-4 w-4" /> Aucun fichier</>}
         </span>
       </div>
+      <ProductHealth slug={p.slug} health={health} onSync={onSync} />
 
       {/* Prix */}
       <div className="mt-4 flex flex-wrap items-end gap-3">

@@ -157,3 +157,21 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Produits : envoi des seuls champs modifiés (prix/statut/fichier jamais touchés). FAQ : suivi par question + note suppressions/ordre.
 - Tests : iteration_16 frontend 100 % ; aucun historique persistant ajouté ; aucun déploiement.
 
+
+## 2026-06 — Incident paiement « Suivi sportif » (Preview corrigé, NON publié)
+- Cause : en Production le document produit suivi-sportif n'a ni lookup_key ni currency → front envoie lookup_key undefined → 422 (6× dans les logs, confirmé par le deployer en lecture seule).
+- Correctif server.py : lookup_of(p) (clé dérivée du slug si absente, même règle que la création admin) dans with_purchasable, ensure_stripe_catalog, upload fichier ; checkout retrouve le produit par slug si lookup_key absent ; currency `or "eur"` ; erreur Stripe journalisée (type/code/message, sans secret) → 502.
+- ProductDetail.jsx : refuse toute réponse sans URL checkout.stripe.com ; messages distincts réseau / 409 / 400 / autre ; détails techniques en console hors production uniquement.
+- Preview : suivi-sportif mis à 4,99 € + fichier TEST + lookup_key/currency retirés pour reproduire la Prod. Session TEST 499 EUR, redirection Stripe OK desktop + mobile ; budget 699 OK ; coming_soon 409 ; sans case 400 ; aucune commande créée.
+- À noter : l'API publique produit expose download_storage_path (à masquer plus tard).
+
+## 2026-06 — Prévention fiches produits incomplètes (Preview uniquement, NON publié)
+- backend/product_rules.py : derive_lookup (slug conforme seulement), valid_lookup, effective_lookup/currency (avertissement ANOMALIE journalisé : 1×/produit/démarrage pour l'affichage, à chaque checkout), commercial_issues, lookup_owners (unicité référence effective).
+- backend/backfill_product_refs.py : simulation par défaut, `--apply` ; ne remplit que les champs absents, idempotent. Appliqué en Preview aux 5 produits historiques. NON exécuté en Production.
+- server.py : achetable = prix>0 + devise + référence valide + vrai fichier ; checkout 409 si référence en double ; create/update : référence jamais écrasée/effacée, doublon 409, passage « available » incomplet 400 ; GET /api/admin/products/health ; POST /api/admin/products/{slug}/stripe-sync (seulement si seul le prix Stripe manque/diffère).
+- Admin Produits : bloc anomalies / « Prêt à la vente » + bouton « Synchroniser avec Stripe ».
+- Tests : tests/test_product_refs.py 8/8, régression 42/42, testing agent iteration_17 OK.
+- 2026-06 (suite) : bouton « Synchroniser » avec confirmation (window.confirm, montant affiché) ; sync idempotente vérifiée (conforme → 400 « Rien à synchroniser », aucun prix créé). Script : `--apply` exige `--confirm-db=<DB_NAME>`, jamais importé par le serveur. En Preview les 5 fiches historiques ont été REMISES sans lookup_key/currency : simulation présentée, application en attente d'accord utilisateur.
+- À signaler : la synchro Stripe existante au démarrage (ensure_stripe_catalog) et au checkout crée/aligne toujours les prix automatiquement (comportement antérieur, non modifié).
+- 2026-06 : correction APPLIQUÉE en Preview (5 fiches, avant/après : seuls lookup_key+currency ajoutés ; 2e exécution 0 changement ; tests 23/23). Simulation Production en lecture seule (deployer, plan() sur docs réels) : 5 à compléter, 0 ignorés, aucune collision ; suivi-sportif 5,99 € fichier Suivi-Sport.xlsx. Stripe LIVE non lu directement par le deployer. Production NON modifiée.
+- 2026-06 : CORRECTION PRODUCTION APPLIQUÉE (accord explicite) via PUT /api/admin/products/{slug} {lookup_key,currency} sur les 5 fiches ; aucun appel Stripe ; diff BEFORE/AFTER (memory/prod_products_BEFORE_fix.md / _AFTER_fix.md) : exactement 10 champs ajoutés, 0 modifié/supprimé, budget-mensuel identique, suivi-sportif 5,99 €. Secrets PROD_ADMIN_EMAIL/PASSWORD ajoutés en Preview pour l'opération : à supprimer + changer le mot de passe admin Prod.

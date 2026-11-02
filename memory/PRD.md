@@ -136,3 +136,9 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Tests : test_audit_fixes.py 15/15 ; test_lamaisondauben.py mis à jour (renonciation, prix 6,99, limites par IP réelle, liens expirés, nettoyage) 52/52 ; autres suites vertes. Build frontend OK.
 - Docs : PRODUCTION.md §8 (sitemap, SEO, redirections, rate limit, en-têtes, tests, sauvegardes Emergent).
 - Preview : 26 sessions Stripe TEST non payées créées par la suite historique (tx 162→188), non supprimées.
+
+## 2026-06 — Second audit (Preview, NON déployé)
+- CORS : backend/cors_config.py ; live → jamais "*", fallback PUBLIC_BASE_URL + www ; allow_credentials=False ; méthodes/en-têtes explicites. Prod à configurer : CORS_ORIGINS=https://la-maison-dauben.com,https://www.la-maison-dauben.com.
+- Logo commun : champ header.favicon = « Logo du site » → Logo.jsx (en-tête, pied, admin) + SiteFavicon ; défaut /images/logo-176.png (logo officiel). Aperçu 44/16/32 px.
+- Tests : tests/test_second_audit.py 5/5 ; iteration_14 UI OK ; test_site_content 12/12, test_audit_fixes 15/15, compliance 15/15.
+- PRODUCTION.md §9 : CORS, règles Cloudflare (anti-iframe, 301), dépendances (starlette 0.37.2 à mettre à jour), hébergeur, questions sauvegardes.

@@ -164,3 +164,10 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - ProductDetail.jsx : refuse toute réponse sans URL checkout.stripe.com ; messages distincts réseau / 409 / 400 / autre ; détails techniques en console hors production uniquement.
 - Preview : suivi-sportif mis à 4,99 € + fichier TEST + lookup_key/currency retirés pour reproduire la Prod. Session TEST 499 EUR, redirection Stripe OK desktop + mobile ; budget 699 OK ; coming_soon 409 ; sans case 400 ; aucune commande créée.
 - À noter : l'API publique produit expose download_storage_path (à masquer plus tard).
+
+## 2026-06 — Prévention fiches produits incomplètes (Preview uniquement, NON publié)
+- backend/product_rules.py : derive_lookup (slug conforme seulement), valid_lookup, effective_lookup/currency (avertissement ANOMALIE journalisé : 1×/produit/démarrage pour l'affichage, à chaque checkout), commercial_issues, lookup_owners (unicité référence effective).
+- backend/backfill_product_refs.py : simulation par défaut, `--apply` ; ne remplit que les champs absents, idempotent. Appliqué en Preview aux 5 produits historiques. NON exécuté en Production.
+- server.py : achetable = prix>0 + devise + référence valide + vrai fichier ; checkout 409 si référence en double ; create/update : référence jamais écrasée/effacée, doublon 409, passage « available » incomplet 400 ; GET /api/admin/products/health ; POST /api/admin/products/{slug}/stripe-sync (seulement si seul le prix Stripe manque/diffère).
+- Admin Produits : bloc anomalies / « Prêt à la vente » + bouton « Synchroniser avec Stripe ».
+- Tests : tests/test_product_refs.py 8/8, régression 42/42, testing agent iteration_17 OK.

@@ -55,10 +55,13 @@ def test_backfill_plan_rules():
     assert {(s, f) for s, f, _ in skipped} >= {("Bad_Slug", "lookup_key"), ("x-y", "lookup_key"), ("neg", "currency")}
 
 
-def test_historic_products_complete():
+def test_historic_products_complete_or_planned():
+    docs = list(mdb.products.find({}, {"_id": 0, "slug": 1, "lookup_key": 1, "currency": 1, "price": 1}))
+    changes = dict(plan(docs)[0])
     for slug in ["suivi-sportif", "travel-manager", "car-cost", "first-apartment", "budget-couple"]:
-        p = mdb.products.find_one({"slug": slug})
+        p = {**next(d for d in docs if d["slug"] == slug), **changes.get(slug, {})}
         assert p["lookup_key"] == slug.replace("-", "_") and p["currency"] == "eur"
+    assert "budget-mensuel" not in changes
 
 
 def test_create_duplicate_and_incomplete(h):

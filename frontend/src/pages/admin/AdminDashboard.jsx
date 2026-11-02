@@ -108,6 +108,9 @@ function ProductsPanel({ qc }) {
   };
 
   const syncStripe = async (slug) => {
+    const p = products.find((x) => x.slug === slug);
+    const amount = p?.price != null ? `${Number(p.price).toFixed(2).replace(".", ",")} € TTC` : "le prix enregistré";
+    if (!window.confirm(`Synchroniser « ${p?.name || slug} » avec Stripe ?\n\nUn prix Stripe actif de ${amount} sera créé si besoin ; un ancien prix non conforme sera désactivé. Rien n'est créé si un prix conforme existe déjà.`)) return;
     try {
       await adminProductStripeSync(slug);
       toast.success("Prix Stripe synchronisé.");

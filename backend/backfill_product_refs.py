@@ -1,7 +1,8 @@
 """Complète lookup_key / currency manquants sur les fiches produits (aucun autre champ).
 
 Simulation par défaut :   python backfill_product_refs.py
-Application explicite :   python backfill_product_refs.py --apply
+Application explicite :   python backfill_product_refs.py --apply --confirm-db=<DB_NAME>
+Jamais appelé par le serveur ni au démarrage / à la publication.
 Idempotent : seuls les champs absents/vides sont écrits, avec un filtre qui revérifie leur absence.
 """
 import asyncio
@@ -42,12 +43,17 @@ def plan(products):
     return changes, skipped
 
 
-async def main(apply: bool):
+async def main(argv):
     load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-    db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
+    name = os.environ["DB_NAME"]
+    apply = "--apply" in argv
+    if apply and f"--confirm-db={name}" not in argv:
+        print(f"Refusé : --apply exige --confirm-db={name}. Simulation uniquement.")
+        apply = False
+    db = AsyncIOMotorClient(os.environ["MONGO_URL"])[name]
     products = await db.products.find({}, {"_id": 0, "slug": 1, "lookup_key": 1, "currency": 1, "price": 1}).to_list(1000)
     changes, skipped = plan(products)
-    print(f"Base : {os.environ['DB_NAME']} — {len(products)} produits, {len(changes)} à compléter, {len(skipped)} ignorés")
+    print(f"Base : {name} — {len(products)} produits, {len(changes)} à compléter, {len(skipped)} ignorés")
     for slug, upd in changes:
         print(f"  {'APPLIQUÉ' if apply else 'SIMULÉ '}  {slug}: {upd}")
     for slug, field, why in skipped:
@@ -57,8 +63,8 @@ async def main(apply: bool):
             for field, value in upd.items():
                 await db.products.update_one({"slug": slug, field: MISSING}, {"$set": {field: value}})
     elif changes:
-        print("Simulation uniquement. Relancer avec --apply pour écrire.")
+        print("Simulation uniquement : aucune donnée modifiée.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main("--apply" in sys.argv))
+    asyncio.run(main(sys.argv[1:]))

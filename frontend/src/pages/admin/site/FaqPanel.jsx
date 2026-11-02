@@ -19,6 +19,13 @@ const countChanges = (draft, base) => {
   const n = draft.items.filter((it) => itemChanged(it, base.items)).length + base.items.filter((it) => !ids.has(it.id)).length;
   return n || (same(draft.items, base.items) ? 0 : 1);
 };
+// Changements sans champ visible : suppressions et changement d'ordre.
+const structural = (draft, base) => {
+  const ids = new Set(draft.items.map((it) => it.id).filter(Boolean));
+  const removed = base.items.filter((it) => !ids.has(it.id)).length;
+  const order = draft.items.map((it) => it.id).filter(Boolean).join() !== base.items.map((it) => it.id).filter((x) => ids.has(x)).join();
+  return [removed && `${removed} question${removed > 1 ? "s" : ""} supprimée${removed > 1 ? "s" : ""}`, order && "ordre modifié"].filter(Boolean).join(" · ");
+};
 
 export default function FaqPanel() {
   const qc = useQueryClient();
@@ -64,6 +71,7 @@ export default function FaqPanel() {
             <ListEditor value={items} item={ITEM} fixed={!s.editing} onChange={setItems} testid="faq-list" newItem={{ question: "", answer: "" }}
               isItemChanged={(i) => s.editing && itemChanged(items[i], s.base.items)} onRestoreItem={restoreItem} />
           </fieldset>
+          {s.editing && structural(s.draft, s.base) && <p className="mt-3 text-xs text-[#D4A359]" data-testid="faq-structural-note">{structural(s.draft, s.base)} — « Annuler les modifications » pour revenir à la version enregistrée.</p>}
           <div className="mt-5 flex flex-wrap gap-3 border-t border-[#E2DDD5] pt-4">
             <SaveButtons s={s} onSave={save} saving={saving} testid="faq" />
             <a href="/faq" target="_blank" rel="noopener noreferrer" className={btnCls} data-testid="faq-view-btn">Voir sur le site</a>

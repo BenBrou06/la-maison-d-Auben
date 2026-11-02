@@ -90,7 +90,7 @@ function ArticleForm({ article, products, onSaved, onDeleted, onPending }) {
       </div>
       <Field label="Extrait" modified={m("excerpt")} onRestore={() => s.restore("excerpt")} testid="excerpt"><textarea rows={2} value={f.excerpt} onChange={ev("excerpt")} className={inputCls} data-testid="article-excerpt-input" /></Field>
       <Field label="Image de couverture" modified={m("cover_image")} onRestore={() => s.restore("cover_image")} testid="cover_image"><ImageInput value={f.cover_image} onChange={set("cover_image")} testid="article-cover" /></Field>
-      <Field label="Contenu" modified={m("content")} onRestore={() => s.restore("content")} testid="content" hint="blocs dans l'ordre d'affichage"><ListEditor value={f.content} item={BLOCK} onChange={set("content")} testid="article-blocks" newItem={{ type: "p", text: "" }} /></Field>
+      <Field label="Contenu" modified={m("content")} onRestore={() => s.restore("content")} testid="content" hint="blocs dans l'ordre d'affichage"><ListEditor value={f.content} item={BLOCK} onChange={set("content")} testid="article-blocks" fixed={!s.editing} newItem={{ type: "p", text: "" }} /></Field>
       <Field label="Texte du bandeau d'appel à l'action" modified={m("cta_text")} onRestore={() => s.restore("cta_text")} testid="cta_text" hint="affiché si un produit est associé"><input value={f.cta_text} onChange={ev("cta_text")} className={inputCls} data-testid="article-cta-input" /></Field>
       <Field label="Produits associés" modified={m("related_product_slugs")} onRestore={() => s.restore("related_product_slugs")} testid="related_product_slugs">
         <div className="flex flex-wrap gap-3" data-testid="article-products">

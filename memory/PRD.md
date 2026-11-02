@@ -149,3 +149,11 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - ArticlesPanel : encadré Statut / Date de publication / Dernière modification ; Modifier/Terminer ; « modifié » par champ ; Enregistrer (X) ; Annuler. Backend inchangé (updated_at à chaque enregistrement, published_at intact).
 - fields.jsx : style des champs désactivés.
 - Tests : test_site_content 13/13 (TestArticleEditTracking) ; iteration_15 UI 100%.
+
+## 2026-06 — Suivi des modifications harmonisé (Contenu produits, Pages, Articles, FAQ) (Preview, NON déployé)
+- site/editTracking.jsx : useEditSession commun ; référence = dernière version enregistrée (commit() après succès, rechargement identique ignoré) ; confirmLeave() pour changement d onglet admin.
+- Consultation : aucun indicateur ; édition : « modifié », « Annuler ce changement » (ex « Texte d origine »), Enregistrer (n), Annuler les modifications ; compteur gauche « n non enregistré(s) ».
+- Confirmation avant abandon : Terminer, changement d élément, changement d onglet, Retour à la liste produits.
+- Produits : envoi des seuls champs modifiés (prix/statut/fichier jamais touchés). FAQ : suivi par question + note suppressions/ordre.
+- Tests : iteration_16 frontend 100 % ; aucun historique persistant ajouté ; aucun déploiement.
+

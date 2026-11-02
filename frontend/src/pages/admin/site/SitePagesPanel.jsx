@@ -23,9 +23,9 @@ function FaviconPreview({ value }) {
   );
 }
 
-function FieldInput({ f, value, onChange, products }) {
+function FieldInput({ f, value, onChange, products, editing }) {
   const id = `content-field-${f.name}`;
-  if (f.type === "list") return <ListEditor value={value} item={f.item} fixed={f.fixed} onChange={onChange} testid={id} />;
+  if (f.type === "list") return <ListEditor value={value} item={f.item} fixed={f.fixed || !editing} onChange={onChange} testid={id} />;
   if (f.type === "image") return (
     <>
       <ImageInput value={value} onChange={onChange} testid={id} />
@@ -80,7 +80,7 @@ function PageForm({ page, stored, products, onSaved, onPending }) {
           {g.fields.map((f) => (
             <div key={f.name}>
               <TrackedLabel s={s} k={f.name} label={f.uiLabel} testid="content" />
-              <FieldInput f={f} value={draft[f.name]} onChange={(v) => s.set(f.name, v)} products={products} />
+              <FieldInput f={f} value={draft[f.name]} onChange={(v) => s.set(f.name, v)} products={products} editing={s.editing} />
               {f.hint && <p className="mt-1 text-xs text-[#626D66]">{f.hint}</p>}
             </div>
           ))}

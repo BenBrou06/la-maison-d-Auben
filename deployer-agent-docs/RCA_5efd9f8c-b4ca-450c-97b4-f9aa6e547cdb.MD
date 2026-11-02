@@ -1,48 +1,53 @@
-# Pre-Fix Platform Connection Configuration Report — la-maison-dauben.com
+# Owner-Authorized Production Data Fix — EXECUTION BLOCKED (read-only tooling)
 
-Mode: STRICTLY READ-ONLY. No redeploy, restart, DB write, secret change, or Stripe call was performed. All findings come from platform connection configuration (not inferred from DB content).
+App: https://la-maison-dauben.com
+Deployment: auben-preview-shop
+DB: auben-preview-shop-test_database
+Collection: products
+Active run: 5efd9f8c-b4ca-450c-97b4-f9aa6e547cdb
 
-## 1) Which deployment/pod serves the domain, and its DB wiring
+## OUTCOME
+STEP A (pre-check) completed and PASSED all conditions.
+STEP B (write) CANNOT be performed by the Deployer Agent: the only DB tool available (mongo_query) is strictly READ-ONLY (find/count/distinct/list_collections/list_indexes). There is no updateOne/write capability. STEP C (post-check/diff) is therefore not applicable yet.
+No write, no retry, no rollback was attempted. No other collection touched. Nothing redeployed/restarted; no secret/Stripe/code change.
 
-- **Deployment serving the custom domain:** `auben-preview-shop` (deployment_id `7010f598-9236-4eed-b47e-6e1a914d6434`).
-  - Both `la-maison-dauben.com` (apex) and `www.la-maison-dauben.com` are verified, linked, SSL active (Cloudflare provider, http validation, root_redirect enabled). Live DNS check: both `linked: true` → DNS points at us.
-  - **frontend_type = cloudflare**: a Cloudflare worker serves static assets from R2 and proxies `/api` to the Kubernetes backend.
-  - **Active (serving) run:** `5efd9f8c-b4ca-450c-97b4-f9aa6e547cdb` (type=redeploy, status=success, completed 2026-11-02T19:24:04Z). This run's pods are the live production backend behind the domain.
-  - Default always-on URL: `https://auben-preview-shop.emergent.host`.
-  - Template `fastapi_react_mongo_shadcn_base_image`, tier_0, amd64, target-3 cluster.
+## STEP A — PRE-CHECK RESULT: PASS
+- Exactly 6 product documents: PASS (count=6)
+- budget-mensuel: lookup_key="budget_mensuel" AND currency="eur": PASS
+- suivi-sportif: price == 5.99 AND status=="available": PASS
+- price null AND status=="coming_soon" for travel-manager, car-cost, first-apartment, budget-couple: PASS (all 4)
+- lookup_key AND currency both ABSENT for suivi-sportif, travel-manager, car-cost, first-apartment, budget-couple: PASS (all 5 — neither field present on any)
+- No document anywhere has lookup_key in [suivi_sportif, travel_manager, car_cost, first_apartment, budget_couple]: PASS (only budget-mensuel carries lookup_key, value "budget_mensuel")
 
-- **DB_NAME the running production backend is configured with:** `auben-preview-shop-test_database`.
-  - VERIFIED two independent ways against the active run:
-    1. `list_secrets` with expected value → DB_NAME `matches_expected: true` (not empty).
-    2. `mongo_query` resolved the active run's MONGO_URL server-side and reported `db_name: auben-preview-shop-test_database`, containing 14 collections including `products`.
-  - **This equals `auben-preview-shop-test_database`** — the same DB your previous read-only report used. Confirmed: your earlier report read the correct production database.
+Conclusion: the data is in exactly the expected pre-state. The 10 conditional updates in STEP B are safe to apply AS SPECIFIED by a tool capable of writing.
 
-- **Mongo cluster/host identifier (host name only):** NOT RETRIEVABLE with the available read-only tooling. The `MONGO_URL` secret is stored encrypted and is resolved + decrypted entirely server-side; no tool ever returns the connection string or host to me. `list_secrets` confirms only that `MONGO_URL` exists and is non-empty. I cannot surface the Atlas cluster/host name — that must be read from the Deployment Panel → Database tab (or MongoDB Atlas directly) by the owner.
+## WHO MUST APPLY THE WRITE
+This must be executed via DB Manager (Deployment Panel -> Database) or by E1/main agent with write access, using the exact 10 conditional updateOne operations specified, each filtered on {field:{$in:[null,""]}} so a missing field is required (no overwrite), $set only, no upsert. After applying, re-read all 6 docs for the post-check diff (expected: exactly 10 added fields — lookup_key + currency on the 5 slugs; zero modified/removed; budget-mensuel identical; suivi-sportif price still 5.99).
 
-- **Preview environment vs. this database — important nuance / caveat:**
-  - The name is confusing: the deployment is literally named `auben-preview-shop` and the DB is `auben-preview-shop-test_database` (the `test_database` suffix is the stock preview `.env` default that was migrated at initial deploy). Despite the word "preview" in the names, THIS is the production deployment and this IS the production database the live domain serves.
-  - Per the platform model, `MONGO_URL` and `DB_NAME` are SYSTEM keys regenerated from **production** state on every deploy and always overwrite any preview value; at initial deploy a separate production Mongo cluster/user is provisioned and preview data migrated in. So by design production and preview point at different clusters.
-  - CAVEAT: I have NO read-only tool that attaches to the Preview environment's live `.env`/Mongo, so I cannot *positively verify from the preview side* that Preview uses a different cluster/host. I can only confirm production's db_name. Recommend the owner compares the host in Deployment Panel → Database against the preview pod's `MONGO_URL` to close this out definitively before the fix.
+## "BEFORE" SNAPSHOT (verbatim, all 6 documents, all fields)
 
-## 2) Backup / restore for this production MongoDB
+### 1. slug=car-cost (_id 6ab036614f2c54c9b313931b)
+name="Car Cost", price=null, status="coming_soon", category_slug="automobile", badge="", main_image="", short_description="Le vrai coût de votre voiture, enfin clair.", created_at="2026-09-20T19:39:13.538132+00:00", lookup_key=ABSENT, currency=ABSENT.
+audience, compatibility (3), contents (5), description, faq (3), features (6), gallery (3 slots), seo{title,description} present.
 
-- The production store is **MongoDB Atlas** (one cluster per app). Atlas automated/continuous backups and snapshots are managed inside Atlas itself.
-- NOT VISIBLE to me: I have no tool that reads Atlas backup configuration, frequency, retention, or the latest snapshot timestamp, and no tool that performs an Atlas restore. Those live in the MongoDB Atlas console (or via Emergent support for the managed cluster). A restore is an Atlas-side operation performed by whoever holds Atlas/cluster access — not something I can trigger or schedule.
-- **On-demand read-only export of `products` (6 docs):** DONE. A read-only `find` over `products` (count confirmed = 6) was exported verbatim into this same file (see "Appendix: products export" below). The `mongo_query` find is read-only and cannot write to the DB. Path of this file is returned by the tool (under `/app/deployer-agent-docs/`). This serves as a point-in-time pre-fix snapshot of the 6 product documents.
+### 2. slug=suivi-sportif (_id 6ab101e75bfb54267285be52)
+name="Suivi sportif", price=5.99, status="available", category_slug="sport", badge="Nouveau", main_image="maison-auben/images/d8c109bb-29b7-45d3-bba3-0b0308d64ed1.png", download_filename="Suivi-Sport.xlsx", download_is_placeholder=false, download_storage_path="maison-auben/files/suivi-sportif/a4984cb5-9d35-49f2-ae49-cd847c650181.xlsx", created_at="2026-09-21T10:07:35.367579+00:00", lookup_key=ABSENT, currency=ABSENT.
+audience, compatibility (2), contents (5), description, faq (3), features (6), gallery (4 slots), seo present.
 
-## 3) Does a direct Mongo update on `products` trigger any restart/redeploy/hook?
+### 3. slug=budget-mensuel (_id 6ab036616c287379456af1b3) — DO NOT TOUCH
+name="Budget mensuel", price=6.99, status="available", category_slug="budget-finance", badge="", currency="eur", lookup_key="budget_mensuel", main_image="maison-auben/images/d3cf52f9-07cf-436c-819b-954506e96d91.png", main_image_placeholder=true, download_filename="Budget_mensuel.zip", download_is_placeholder=false, download_storage_path="maison-auben/files/budget-mensuel/9b140c08-b898-4a82-b100-9c8707432f12.zip", created_at="2026-09-20T19:39:13.527540+00:00".
+audience, compatibility (2), contents (6), description, faq (4), features (6), gallery (4 slots), seo present.
 
-- **No.** A direct document update to `products` (via the DB Manager / Atlas) does not trigger any Kubernetes pod restart, any deploy pipeline run, or any platform hook. The deploy pipeline only runs on an explicit deploy trigger; the running pods read/write the live DB continuously and a data change does not recycle them. There is no DB-change-driven hook in the platform. (The live pods will simply read the new values on subsequent requests.)
+### 4. slug=travel-manager (_id 6ab036614f2c54c9b3139319)
+name="Travel Manager", price=null, status="coming_soon", category_slug="travel", badge="", main_image="", created_at="2026-09-20T19:39:13.537627+00:00", lookup_key=ABSENT, currency=ABSENT.
+audience, compatibility (3), contents (5), description, faq (3), features (6), gallery (3 slots), seo present.
 
----
+### 5. slug=first-apartment (_id 6ab036614f2c54c9b313931d)
+name="First Apartment", price=null, status="coming_soon", category_slug="maison", badge="", main_image="", created_at="2026-09-20T19:39:13.538431+00:00", lookup_key=ABSENT, currency=ABSENT.
+audience, compatibility (3), contents (5), description, faq (3), features (6), gallery (3 slots), seo present.
 
-## Appendix: products export (6 documents, read-only snapshot from db `auben-preview-shop-test_database`, run `5efd9f8c-b4ca-450c-97b4-f9aa6e547cdb`)
+### 6. slug=budget-couple (_id 6ab036614f2c54c9b313931f)
+name="Budget Couple", price=null, status="coming_soon", category_slug="couple", badge="", main_image="", created_at="2026-09-20T19:39:13.538715+00:00", lookup_key=ABSENT, currency=ABSENT.
+audience, compatibility (3), contents (5), description, faq (3), features (6), gallery (3 slots), seo present.
 
-1. _id=6ab036614f2c54c9b313931d | slug=first-apartment | name="First Apartment" | status=coming_soon | price=null | category_slug=maison
-2. _id=6ab101e75bfb54267285be52 | slug=suivi-sportif | name="Suivi sportif" | status=available | price=5.99 | category_slug=sport | download_storage_path=maison-auben/files/suivi-sportif/a4984cb5-9d35-49f2-ae49-cd847c650181.xlsx | download_filename=Suivi-Sport.xlsx | main_image=maison-auben/images/d8c109bb-29b7-45d3-bba3-0b0308d64ed1.png
-3. _id=6ab036616c287379456af1b3 | slug=budget-mensuel | name="Budget mensuel" | status=available | price=6.99 | currency=eur | category_slug=budget-finance | lookup_key=budget_mensuel | download_storage_path=maison-auben/files/budget-mensuel/9b140c08-b898-4a82-b100-9c8707432f12.zip | download_filename=Budget_mensuel.zip | main_image=maison-auben/images/d3cf52f9-07cf-436c-819b-954506e96d91.png (main_image_placeholder=true)
-4. _id=6ab036614f2c54c9b3139319 | slug=travel-manager | name="Travel Manager" | status=coming_soon | price=null | category_slug=travel
-5. _id=6ab036614f2c54c9b313931b | slug=car-cost | name="Car Cost" | status=coming_soon | price=null | category_slug=automobile
-6. _id=6ab036614f2c54c9b313931f | slug=budget-couple | name="Budget Couple" | status=coming_soon | price=null | category_slug=couple
-
-Note: the two `available` products carry real download_storage_path + download_filename and gallery/main_image storage paths; the four `coming_soon` products have empty download/image fields. Full nested fields (contents, faq, features, gallery, seo, audience, descriptions) were read in full during export and are unchanged by this read.
+NOTE: Full nested field contents (every faq/feature/gallery entry) were read verbatim from the live DB during pre-check and matched the expected structure; abbreviated here for the doc. The pre-state is confirmed safe for the specified writes.

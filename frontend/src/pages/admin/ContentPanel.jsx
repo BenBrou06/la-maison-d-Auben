@@ -1,11 +1,28 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Pencil, ArrowLeft, Save, Plus, Trash2, ArrowUp, ArrowDown,
+  Pencil, ArrowLeft, Plus, Trash2, ArrowUp, ArrowDown,
   ExternalLink, ImagePlus, FileText,
 } from "lucide-react";
 import { getProducts, adminUpdateProduct, adminUploadImage, mediaUrl } from "@/lib/api";
+import { useEditSession, EditModeBar, TrackedLabel, SaveButtons, Modified, Restore, CONFIRM_DISCARD } from "@/pages/admin/site/editTracking";
+
+const toForm = (product) => ({
+  name: product.name || "",
+  short_description: product.short_description || "",
+  badge: product.badge || "",
+  description: product.description || "",
+  audience: product.audience || "",
+  features: (product.features || []).map((f) => ({ icon: f.icon || "Sparkles", title: f.title || "", text: f.text || "" })),
+  contents: [...(product.contents || [])],
+  compatibility: [...(product.compatibility || [])],
+  faq: (product.faq || []).map((f) => ({ q: f.q || "", a: f.a || "" })),
+  gallery: (product.gallery || []).map((g, i) => ({ key: g.key || `slot-${i}`, caption: g.caption || "", storage_path: g.storage_path || "", url: g.url || "" })),
+  seo: { title: product.seo?.title || "", description: product.seo?.description || "" },
+  main_image: product.main_image || "",
+});
+const KEYS = Object.keys(toForm({}));
 
 const ICON_OPTIONS = [
   "Wallet", "Plane", "Home", "Car", "TrendingUp", "Heart", "Backpack", "Dices",
@@ -13,7 +30,7 @@ const ICON_OPTIONS = [
   "MapPin", "Fuel", "Wrench", "Users", "Boxes", "ClipboardList", "Activity", "Luggage", "Compass",
 ];
 
-const inputCls = "w-full rounded-lg border border-[#E2DDD5] bg-[#FAF8F5] px-3 py-2 text-sm text-[#1E3A2B] focus:border-[#87A987] focus:outline-none";
+const inputCls = "w-full rounded-lg border border-[#E2DDD5] bg-[#FAF8F5] px-3 py-2 text-sm text-[#1E3A2B] focus:border-[#87A987] focus:outline-none disabled:cursor-default disabled:text-[#4A544D]";
 const labelCls = "block text-xs font-medium text-[#626D66] mb-1";
 
 const move = (arr, i, dir) => {
@@ -24,10 +41,13 @@ const move = (arr, i, dir) => {
   return next;
 };
 
-function Section({ title, children }) {
+function Section({ title, children, s, k }) {
   return (
     <div className="rounded-xl border border-[#E2DDD5] bg-white p-5">
-      <h3 className="font-serif text-lg text-[#1E3A2B]">{title}</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-serif text-lg text-[#1E3A2B]">{title}<Modified show={k && s.isChanged(k)} testid={`product-modified-${k}`} /></h3>
+        {k && <Restore show={s.isChanged(k)} onClick={() => s.restore(k)} testid={`product-reset-${k}`} />}
+      </div>
       <div className="mt-4 space-y-4">{children}</div>
     </div>
   );
@@ -77,22 +97,13 @@ function AddBtn({ children, onClick, testid }) {
 
 function ContentEditor({ product, onBack }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState(() => ({
-    name: product.name || "",
-    short_description: product.short_description || "",
-    badge: product.badge || "",
-    description: product.description || "",
-    audience: product.audience || "",
-    features: (product.features || []).map((f) => ({ icon: f.icon || "Sparkles", title: f.title || "", text: f.text || "" })),
-    contents: [...(product.contents || [])],
-    compatibility: [...(product.compatibility || [])],
-    faq: (product.faq || []).map((f) => ({ q: f.q || "", a: f.a || "" })),
-    gallery: (product.gallery || []).map((g, i) => ({ key: g.key || `slot-${i}`, caption: g.caption || "", storage_path: g.storage_path || "", url: g.url || "" })),
-    seo: { title: product.seo?.title || "", description: product.seo?.description || "" },
-    main_image: product.main_image || "",
-  }));
+  const saved = useMemo(() => toForm(product), [product]);
+  const s = useEditSession(saved, KEYS);
+  const form = s.draft;
   const [saving, setSaving] = useState(false);
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = s.set;
+  const lbl = (k, text) => <TrackedLabel s={s} k={k} label={text} testid="product" />;
+  const back = () => { if (s.count && !window.confirm(CONFIRM_DISCARD)) return; onBack(); };
 
   const uploadTo = async (file, cb) => {
     if (!file) return;
@@ -106,43 +117,28 @@ function ContentEditor({ product, onBack }) {
   const save = async () => {
     setSaving(true);
     try {
-      // Mise à jour partielle au niveau des champs : n'affecte ni prix, ni statut, ni fichier.
-      await adminUpdateProduct(product.slug, {
-        name: form.name,
-        short_description: form.short_description,
-        badge: form.badge,
-        description: form.description,
-        audience: form.audience,
-        features: form.features,
-        contents: form.contents,
-        compatibility: form.compatibility,
-        faq: form.faq,
-        gallery: form.gallery,
-        seo: form.seo,
-        main_image: form.main_image,
-      });
+      // Mise à jour partielle : seuls les champs modifiés sont envoyés (jamais prix, statut ou fichier).
+      await adminUpdateProduct(product.slug, Object.fromEntries(s.changed.map((k) => [k, form[k]])));
       toast.success("Contenu enregistré !");
+      s.commit();
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["product", product.slug] });
-    } catch { toast.error("Échec de l'enregistrement."); }
+    } catch { toast.error("Échec de l'enregistrement. Vos modifications sont conservées."); }
     setSaving(false);
   };
 
   return (
     <div data-testid={`content-editor-${product.slug}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button onClick={onBack} data-testid="content-back-btn" className="inline-flex items-center gap-1.5 text-sm text-[#626D66] hover:text-[#1E3A2B]">
+        <button onClick={back} data-testid="content-back-btn" className="inline-flex items-center gap-1.5 text-sm text-[#626D66] hover:text-[#1E3A2B]">
           <ArrowLeft className="h-4 w-4" /> Retour à la liste
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <SaveButtons s={s} onSave={save} saving={saving} testid="product" />
           <a href={`/boutique/${product.slug}`} target="_blank" rel="noreferrer" data-testid="content-preview-btn"
             className="inline-flex items-center gap-1.5 rounded-xl border border-[#E2DDD5] bg-white px-4 py-2.5 text-sm font-medium text-[#1E3A2B] hover:bg-[#EAF0EC]">
             <ExternalLink className="h-4 w-4" /> Voir la page
           </a>
-          <button onClick={save} disabled={saving} data-testid="content-save-btn"
-            className="inline-flex items-center gap-2 rounded-xl bg-[#1E3A2B] px-5 py-2.5 text-sm font-medium text-[#FAF8F5] hover:bg-[#3B6B4C] disabled:opacity-70">
-            <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : "Enregistrer"}
-          </button>
         </div>
       </div>
 
@@ -150,13 +146,15 @@ function ContentEditor({ product, onBack }) {
         L'édition du contenu ne modifie ni le prix, ni la disponibilité, ni le fichier (gérés dans l'onglet Produits).
       </p>
 
-      <div className="mt-5 space-y-5">
+      <div className="mt-4"><EditModeBar s={s} testid="product" what="la fiche produit" /></div>
+
+      <fieldset disabled={!s.editing} className="mt-5 space-y-5">
         <Section title="En-tête">
-          <div><label className={labelCls}>Titre du produit</label><input className={inputCls} value={form.name} data-testid="content-name" onChange={(e) => set("name", e.target.value)} /></div>
-          <div><label className={labelCls}>Accroche / sous-titre</label><input className={inputCls} value={form.short_description} data-testid="content-short-description" onChange={(e) => set("short_description", e.target.value)} /></div>
-          <div><label className={labelCls}>Badge (optionnel)</label><input className={inputCls} value={form.badge} data-testid="content-badge" onChange={(e) => set("badge", e.target.value)} /></div>
+          <div>{lbl("name", "Titre du produit")}<input className={inputCls} value={form.name} data-testid="content-name" onChange={(e) => set("name", e.target.value)} /></div>
+          <div>{lbl("short_description", "Accroche / sous-titre")}<input className={inputCls} value={form.short_description} data-testid="content-short-description" onChange={(e) => set("short_description", e.target.value)} /></div>
+          <div>{lbl("badge", "Badge (optionnel)")}<input className={inputCls} value={form.badge} data-testid="content-badge" onChange={(e) => set("badge", e.target.value)} /></div>
           <div>
-            <label className={labelCls}>Image principale</label>
+            {lbl("main_image", "Image principale")}
             <div className="flex items-center gap-3">
               <div className="h-16 w-16 overflow-hidden rounded-lg border border-[#E2DDD5] bg-[#F2EDE4]">
                 {form.main_image ? <img src={mediaUrl(form.main_image)} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[#A9772F]"><ImagePlus className="h-5 w-5" /></div>}
@@ -170,11 +168,11 @@ function ContentEditor({ product, onBack }) {
         </Section>
 
         <Section title="Présentation">
-          <div><label className={labelCls}>Description principale</label><textarea rows={4} className={inputCls} value={form.description} data-testid="content-description" onChange={(e) => set("description", e.target.value)} /></div>
-          <div><label className={labelCls}>Texte de présentation (à qui / pourquoi)</label><textarea rows={3} className={inputCls} value={form.audience} data-testid="content-audience" onChange={(e) => set("audience", e.target.value)} /></div>
+          <div>{lbl("description", "Description principale")}<textarea rows={4} className={inputCls} value={form.description} data-testid="content-description" onChange={(e) => set("description", e.target.value)} /></div>
+          <div>{lbl("audience", "Texte de présentation (à qui / pourquoi)")}<textarea rows={3} className={inputCls} value={form.audience} data-testid="content-audience" onChange={(e) => set("audience", e.target.value)} /></div>
         </Section>
 
-        <Section title="Fonctionnalités">
+        <Section title="Fonctionnalités" s={s} k="features">
           <div className="space-y-3">
             {form.features.map((f, i) => (
               <div key={i} className="rounded-lg border border-[#E2DDD5] p-3" data-testid={`content-feature-${i}`}>
@@ -197,7 +195,7 @@ function ContentEditor({ product, onBack }) {
           <AddBtn testid="content-add-feature" onClick={() => set("features", [...form.features, { icon: "Sparkles", title: "", text: "" }])}>Ajouter une fonctionnalité</AddBtn>
         </Section>
 
-        <Section title="Galerie d'images">
+        <Section title="Galerie d'images" s={s} k="gallery">
           <div className="grid gap-3 sm:grid-cols-2">
             {form.gallery.map((g, i) => (
               <div key={g.key || i} className="rounded-lg border border-[#E2DDD5] p-3" data-testid={`content-gallery-${i}`}>
@@ -224,15 +222,15 @@ function ContentEditor({ product, onBack }) {
           <AddBtn testid="content-add-gallery" onClick={() => set("gallery", [...form.gallery, { key: `slot-${Date.now()}`, caption: "", storage_path: "" }])}>Ajouter une image</AddBtn>
         </Section>
 
-        <Section title="Ce que vous recevez">
+        <Section title="Ce que vous recevez" s={s} k="contents">
           <StringList label="Éléments inclus" items={form.contents} onChange={(v) => set("contents", v)} testid="content-contents" />
         </Section>
 
-        <Section title="Compatibilité">
+        <Section title="Compatibilité" s={s} k="compatibility">
           <StringList label="Compatibilités" items={form.compatibility} onChange={(v) => set("compatibility", v)} testid="content-compatibility" />
         </Section>
 
-        <Section title="FAQ">
+        <Section title="FAQ" s={s} k="faq">
           <div className="space-y-3">
             {form.faq.map((f, i) => (
               <div key={i} className="rounded-lg border border-[#E2DDD5] p-3" data-testid={`content-faq-${i}`}>
@@ -251,17 +249,13 @@ function ContentEditor({ product, onBack }) {
           <AddBtn testid="content-add-faq" onClick={() => set("faq", [...form.faq, { q: "", a: "" }])}>Ajouter une question</AddBtn>
         </Section>
 
-        <Section title="Référencement (SEO)">
+        <Section title="Référencement (SEO)" s={s} k="seo">
           <div><label className={labelCls}>Titre SEO</label><input className={inputCls} value={form.seo.title} data-testid="content-seo-title" onChange={(e) => set("seo", { ...form.seo, title: e.target.value })} /></div>
           <div><label className={labelCls}>Meta description</label><textarea rows={2} className={inputCls} value={form.seo.description} data-testid="content-seo-description" onChange={(e) => set("seo", { ...form.seo, description: e.target.value })} /></div>
         </Section>
-
-        <div className="flex justify-end">
-          <button onClick={save} disabled={saving} data-testid="content-save-btn-bottom"
-            className="inline-flex items-center gap-2 rounded-xl bg-[#1E3A2B] px-6 py-3 text-sm font-medium text-[#FAF8F5] hover:bg-[#3B6B4C] disabled:opacity-70">
-            <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : "Enregistrer le contenu"}
-          </button>
-        </div>
+      </fieldset>
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <SaveButtons s={s} onSave={save} saving={saving} testid="product-bottom" />
       </div>
     </div>
   );
@@ -294,7 +288,7 @@ export default function ContentPanel() {
                 </div>
                 <button onClick={() => setEditing(p.slug)} data-testid={`content-edit-${p.slug}`}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A2B] px-3 py-2 text-sm font-medium text-[#FAF8F5] hover:bg-[#3B6B4C]">
-                  <Pencil className="h-4 w-4" /> Modifier
+                  <Pencil className="h-4 w-4" /> Ouvrir
                 </button>
               </div>
             ))}

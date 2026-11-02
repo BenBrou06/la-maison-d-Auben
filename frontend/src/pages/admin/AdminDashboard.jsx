@@ -10,6 +10,7 @@ import NewsletterPanel from "@/pages/admin/NewsletterPanel";
 import SitePagesPanel from "@/pages/admin/site/SitePagesPanel";
 import ArticlesPanel from "@/pages/admin/site/ArticlesPanel";
 import FaqPanel from "@/pages/admin/site/FaqPanel";
+import { confirmLeave } from "@/pages/admin/site/editTracking";
 import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import {
   adminMe, adminOrders, adminMessages, getProducts, adminDeleteMessage, adminDeleteOrder,
@@ -62,7 +63,7 @@ export default function AdminDashboard() {
             {TABS.map((t) => (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key)}
+                onClick={() => { if (t.key !== tab && !confirmLeave()) return; setTab(t.key); }}
                 data-testid={`admin-tab-${t.key}`}
                 className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
                   tab === t.key ? "bg-[#1E3A2B] text-[#FAF8F5]" : "border border-[#E2DDD5] bg-white text-[#2C332E] hover:border-[#87A987]"

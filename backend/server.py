@@ -19,6 +19,8 @@ from auth import hash_password, verify_password, create_access_token, get_curren
 from newsletter_admin import (router as newsletter_router, mark_interrupted_campaigns, has_valid_consent,
                               require_delete_confirmation, DeleteConfirm)
 from order_guard import order_deletion_blockers
+from product_rules import (DEFAULT_CURRENCY, commercial_issues, derive_lookup, effective_currency,
+                           effective_lookup, lookup_owners, valid_lookup)
 from content_admin import router as content_router
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
@@ -247,21 +249,17 @@ async def get_categories():
     return cats
 
 
-def lookup_of(p: dict) -> str:
-    # Clé Stripe du produit ; dérivée du slug si absente en base (même règle que la création admin).
-    return p.get("lookup_key") or p["slug"].replace("-", "_")
+def lookup_of(p: dict):
+    # Clé Stripe du produit ; déduite du slug si absente en base (avertissement journalisé).
+    return effective_lookup(p, warn=True)
 
 
 def with_purchasable(p):
-    """Un produit est achetable s'il a un VRAI fichier associé ET un prix défini."""
+    """Achetable = vrai fichier + prix positif + devise + référence Stripe valide."""
     if p is not None:
+        p["purchasable"] = not commercial_issues(p)
         p["lookup_key"] = lookup_of(p)
-        p["currency"] = p.get("currency") or "eur"
-        p["purchasable"] = (
-            bool(p.get("download_storage_path"))
-            and not p.get("download_is_placeholder")
-            and bool(p.get("price"))
-        )
+        p["currency"] = effective_currency(p, warn=True)
     return p
 
 
@@ -420,7 +418,10 @@ async def ensure_stripe_catalog():
     try:
         async for p in db.products.find({"price": {"$gt": 0},
                                          "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
-            sync_stripe_price(lookup_of(p), p["name"], p["price"], p.get("currency") or "eur")
+            if commercial_issues(p) or len(await lookup_owners(db, lookup_of(p))) > 1:
+                logger.warning(f"Catalogue Stripe : {p['slug']} ignoré (fiche incomplète ou référence en double)")
+                continue
+            sync_stripe_price(lookup_of(p), p["name"], p["price"], effective_currency(p, warn=True))
         logger.info("Stripe catalog ensured")
     except Exception as e:
         logger.error(f"Stripe catalog setup failed: {e}")
@@ -429,14 +430,16 @@ async def ensure_stripe_catalog():
 @api.post("/payments/checkout")
 async def create_checkout(request: Request, req: CheckoutInput):
     check_rate(request, "checkout", 20)
-    product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
-    if not product:
-        # Produit sans lookup_key enregistré : clé dérivée de son slug (voir lookup_of).
-        product = await db.products.find_one(
-            {"slug": req.lookup_key.replace("_", "-"), "lookup_key": {"$in": [None, ""]}}, {"_id": 0})
-    # Gating : aucun checkout (ni session Stripe) pour un produit sans vrai fichier + prix.
-    if (not product or not product.get("download_storage_path")
-            or product.get("download_is_placeholder") or not product.get("price")):
+    owners = await lookup_owners(db, req.lookup_key)
+    if len(owners) > 1:
+        logger.error(f"Checkout bloqué : référence {req.lookup_key} partagée par {owners}")
+        raise HTTPException(409, "Produit indisponible à l'achat (référence de paiement en double).")
+    product = await db.products.find_one({"slug": owners[0]}, {"_id": 0}) if owners else None
+    if product:
+        effective_lookup(product, warn=True, always=True)
+        effective_currency(product, warn=True, always=True)
+    # Gating : aucun checkout (ni session Stripe) pour un produit incomplet.
+    if not product or commercial_issues(product):
         raise HTTPException(409, "Produit indisponible à l'achat.")
     if req.withdrawal_waiver is not True or req.withdrawal_consent_version != WITHDRAWAL_CONSENT_VERSION:
         raise HTTPException(400, "Merci de cocher la case relative à l'accès immédiat et au droit de rétractation.")
@@ -805,9 +808,16 @@ async def admin_resend_email(order_id: str, admin=Depends(get_current_admin)):
 async def create_product(inp: ProductInput, admin=Depends(get_current_admin)):
     data = inp.model_dump()
     data["slug"] = data.get("slug") or data["name"].lower().replace(" ", "-")
-    data["lookup_key"] = data.get("lookup_key") or data["slug"].replace("-", "_")
+    data["lookup_key"] = data.get("lookup_key") or derive_lookup(data["slug"])
+    data["currency"] = data.get("currency") or DEFAULT_CURRENCY
     if await db.products.find_one({"slug": data["slug"]}):
         raise HTTPException(400, "Un produit avec ce slug existe déjà")
+    if not valid_lookup(data["lookup_key"]):
+        raise HTTPException(400, "Référence Stripe invalide : utilisez un slug en minuscules, chiffres et tirets.")
+    if await lookup_owners(db, data["lookup_key"]):
+        raise HTTPException(409, f"La référence Stripe « {data['lookup_key']} » est déjà utilisée par un autre produit.")
+    if data.get("status") == "available" and commercial_issues(data):
+        raise HTTPException(400, "Produit incomplet pour la vente : " + " ".join(i["message"] for i in commercial_issues(data)))
     data["created_at"] = now_iso()
     await db.products.insert_one(data)
     return clean(await db.products.find_one({"slug": data["slug"]}))
@@ -821,13 +831,27 @@ async def update_product(slug: str, inp: ProductUpdateInput, admin=Depends(get_c
     # Mise à jour PARTIELLE : uniquement les champs réellement fournis (jamais d'écrasement).
     data = inp.model_dump(exclude_unset=True)
     data.pop("slug", None)
+    # Référence / devise : jamais effacées, jamais réécrites si déjà renseignées.
+    for f in ("lookup_key", "currency"):
+        if f in data and (not data[f] or existing.get(f)):
+            if data[f] and existing.get(f) and data[f] != existing[f]:
+                raise HTTPException(400, f"{'Référence Stripe' if f == 'lookup_key' else 'Devise'} déjà renseignée : modification refusée.")
+            data.pop(f)
+    if "lookup_key" in data:
+        if not valid_lookup(data["lookup_key"]):
+            raise HTTPException(400, "Référence Stripe invalide.")
+        if [s for s in await lookup_owners(db, data["lookup_key"]) if s != slug]:
+            raise HTTPException(409, f"La référence Stripe « {data['lookup_key']} » est déjà utilisée par un autre produit.")
+    merged = {**existing, **data}
+    if data.get("status") == "available" and commercial_issues(merged):
+        raise HTTPException(400, "Produit incomplet pour la vente : " + " ".join(i["message"] for i in commercial_issues(merged)))
     stripe_synced = None
     if "price" in data and data["price"] is not None:
         has_file = bool(existing.get("download_storage_path")) and not existing.get("download_is_placeholder")
         if has_file:
-            lookup = existing.get("lookup_key") or slug.replace("-", "_")
+            lookup = lookup_of(merged)
             name = data.get("name") or existing.get("name")
-            currency = data.get("currency") or existing.get("currency") or "eur"
+            currency = effective_currency(merged, warn=True)
             try:
                 sync_stripe_price(lookup, name, data["price"], currency)
                 stripe_synced = True
@@ -875,9 +899,9 @@ async def upload_product_file(slug: str, file: UploadFile = File(...), admin=Dep
     # Un fichier présent + un prix défini → le produit devient réellement achetable :
     # on resynchronise le prix Stripe (même mécanisme que le catalogue).
     prod = await db.products.find_one({"slug": slug}, {"_id": 0})
-    if prod and prod.get("price"):
+    if prod and not commercial_issues(prod) and len(await lookup_owners(db, lookup_of(prod))) == 1:
         try:
-            sync_stripe_price(lookup_of(prod), prod["name"], prod["price"], prod.get("currency") or "eur")
+            sync_stripe_price(lookup_of(prod), prod["name"], prod["price"], effective_currency(prod, warn=True))
         except Exception as e:
             logger.error(f"Stripe price sync after upload failed for {slug}: {e}")
     return {"status": "ok", "filename": filename}
@@ -900,6 +924,59 @@ async def delete_product_file(slug: str, admin=Depends(get_current_admin)):
         "$unset": {"download_storage_path": "", "download_filename": "", "download_is_placeholder": ""},
     })
     return {"status": "ok"}
+
+
+def _stripe_price_issue(key: str, price: float, currency: str):
+    try:
+        prices = stripe.Price.list(lookup_keys=[key], active=True, limit=1).data
+    except Exception as e:
+        logger.error(f"Diagnostic Stripe impossible pour {key}: {type(e).__name__}")
+        return {"code": "stripe_unreachable", "message": "Vérification Stripe impossible pour le moment."}
+    if not prices:
+        return {"code": "stripe_price", "message": "Aucun prix actif chez Stripe pour cette référence."}
+    if prices[0].unit_amount != int(round(price * 100)) or prices[0].currency != currency:
+        return {"code": "stripe_price", "message": "Le prix Stripe actif ne correspond pas au prix enregistré."}
+    return None
+
+
+async def _product_health(p: dict) -> dict:
+    issues = commercial_issues(p)
+    warnings = []
+    if not p.get("lookup_key"):
+        warnings.append("Référence Stripe absente en base (déduite du slug).")
+    if not p.get("currency"):
+        warnings.append("Devise absente en base (« eur » utilisée par défaut).")
+    key = effective_lookup(p)
+    if key and len(await lookup_owners(db, key)) > 1:
+        issues.append({"code": "duplicate", "message": f"Référence Stripe « {key} » utilisée par plusieurs produits."})
+    if not issues:
+        stripe_issue = _stripe_price_issue(key, p["price"], effective_currency(p))
+        if stripe_issue:
+            issues.append(stripe_issue)
+    return {"slug": p["slug"], "lookup_key": key, "status": p.get("status"),
+            "ready": not issues, "issues": issues, "warnings": warnings,
+            "can_sync": [i["code"] for i in issues] == ["stripe_price"]}
+
+
+@api.get("/admin/products/health")
+async def products_health(admin=Depends(get_current_admin)):
+    return [await _product_health(p) async for p in db.products.find({}, {"_id": 0})]
+
+
+@api.post("/admin/products/{slug}/stripe-sync")
+async def products_stripe_sync(slug: str, admin=Depends(get_current_admin)):
+    p = await db.products.find_one({"slug": slug}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Produit introuvable")
+    health = await _product_health(p)
+    if not health["can_sync"]:
+        raise HTTPException(400, "Synchronisation impossible : " + " ".join(i["message"] for i in health["issues"]) if health["issues"] else "Rien à synchroniser.")
+    try:
+        sync_stripe_price(health["lookup_key"], p["name"], p["price"], effective_currency(p, warn=True))
+    except Exception as e:
+        logger.error(f"Stripe sync manuelle échouée pour {slug}: {type(e).__name__}")
+        raise HTTPException(502, "La synchronisation Stripe a échoué. Réessayez.")
+    return await _product_health(p)
 
 
 @api.post("/admin/upload/image")

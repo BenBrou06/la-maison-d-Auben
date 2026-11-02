@@ -210,6 +210,23 @@ class TestHeaderAndFavicon:
         assert requests.get(f"{API}/content").json().get("header", {}) == {}
 
 
+class TestArticleEditTracking:
+    def test_update_keeps_publication_date_and_draft(self, h):
+        slug = P + "suivi"
+        r = requests.post(f"{API}/admin/articles", headers=h, json={"title": "Suivi", "slug": slug, "published": False,
+                                                                      "published_at": "2026-01-15T00:00:00+00:00"})
+        assert r.status_code == 200
+        before = r.json()
+        time.sleep(1.1)
+        after = requests.put(f"{API}/admin/articles/{slug}", headers=h, json={"excerpt": "Nouvel extrait"}).json()
+        assert after["published_at"] == before["published_at"] == "2026-01-15T00:00:00+00:00"
+        assert after["updated_at"] > before["updated_at"]
+        assert after["published"] is False and after["excerpt"] == "Nouvel extrait" and after["title"] == "Suivi"
+        assert requests.get(f"{API}/articles/{slug}").status_code == 404
+        listed = [a for a in requests.get(f"{API}/admin/articles", headers=h).json() if a["slug"] == slug][0]
+        assert listed["updated_at"] == after["updated_at"]  # simple lecture : date inchangée
+
+
 class TestSitemapAndCommerce:
     def test_sitemap_contents(self):
         xml = requests.get(f"{API}/sitemap.xml").text

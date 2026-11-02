@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, Save } from "lucide-react";
+import { Check, ExternalLink, Pencil, Save } from "lucide-react";
 import { adminContent, adminSaveContent, getProducts, mediaUrl } from "@/lib/api";
 import { CONTENT_PAGES, defaultsFor } from "@/content/schema";
+import { groupFields } from "@/content/adminLabels";
 import { ImageInput, ListEditor, ResetButton, inputCls, primaryCls, btnCls } from "@/pages/admin/site/fields";
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -46,8 +47,15 @@ function PageForm({ page, stored, products, onSaved, onDirty }) {
   const effective = useMemo(() => ({ ...defaultsFor(page.key), ...(stored || {}) }), [page.key, stored]);
   const [draft, setDraft] = useState(effective);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
   const changed = page.fields.filter((f) => !same(draft[f.name], effective[f.name]));
   useEffect(() => onDirty(changed.length > 0), [changed.length, onDirty]);
+  const groups = useMemo(() => groupFields(page), [page]);
+  const finish = () => {
+    if (changed.length && !window.confirm("Des modifications ne sont pas enregistrées. Les abandonner ?")) return;
+    setDraft(effective);
+    setEditing(false);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -68,20 +76,39 @@ function PageForm({ page, stored, products, onSaved, onDirty }) {
           Page légale : le texte actuel est conservé tel quel tant que vous ne le modifiez pas. Ligne vide = nouveau paragraphe ; lignes commençant par « - » = liste ; lien : [texte](https://…).
         </p>
       )}
-      {page.fields.map((f) => (
-        <div key={f.name}>
-          <div className="mb-1.5 flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-[#2C332E]">{f.label}{!same(draft[f.name], effective[f.name]) && <span className="ml-2 text-xs text-[#D4A359]">modifié</span>}</span>
-            {stored && f.name in stored && <ResetButton onClick={() => setDraft({ ...draft, [f.name]: f.default })} testid={`content-reset-${f.name}`} />}
-          </div>
-          <FieldInput f={f} value={draft[f.name]} onChange={(v) => setDraft({ ...draft, [f.name]: v })} products={products} />
-        </div>
+      <div className="flex flex-wrap items-center gap-3" data-testid="content-mode-bar">
+        {editing
+          ? <button onClick={finish} className={btnCls} data-testid="content-finish-btn"><Check className="h-3.5 w-3.5" /> Terminer</button>
+          : <button onClick={() => setEditing(true)} className={primaryCls} data-testid="content-edit-btn"><Pencil className="h-4 w-4" /> Modifier</button>}
+        <span className="text-xs text-[#626D66]" data-testid="content-mode-label">{editing ? "Mode édition" : "Consultation — cliquez sur « Modifier » pour changer le contenu."}</span>
+      </div>
+      {groups.map((g) => (
+        <fieldset key={g.title} disabled={!editing} className="space-y-4 rounded-2xl border border-[#E2DDD5] p-5" data-testid={`content-group-${g.title}`}>
+          <legend className="px-2">
+            <span className="font-serif text-base font-semibold text-[#1E3A2B]">{g.title}</span>
+            {g.where && <span className="ml-2 text-xs text-[#626D66]">Visible : {g.where}</span>}
+          </legend>
+          {g.fields.map((f) => (
+            <div key={f.name}>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-[#2C332E]">{f.uiLabel}{!same(draft[f.name], effective[f.name]) && <span className="ml-2 text-xs text-[#D4A359]" data-testid={`content-modified-${f.name}`}>modifié</span>}</span>
+                {editing && stored && f.name in stored && <ResetButton onClick={() => setDraft({ ...draft, [f.name]: f.default })} testid={`content-reset-${f.name}`} />}
+              </div>
+              <FieldInput f={f} value={draft[f.name]} onChange={(v) => setDraft({ ...draft, [f.name]: v })} products={products} />
+              {f.hint && <p className="mt-1 text-xs text-[#626D66]">{f.hint}</p>}
+            </div>
+          ))}
+        </fieldset>
       ))}
       <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-[#E2DDD5] bg-white py-4">
-        <button onClick={save} disabled={!changed.length || saving} className={primaryCls} data-testid="content-save-btn">
-          <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : `Enregistrer${changed.length ? ` (${changed.length})` : ""}`}
-        </button>
-        <button onClick={() => setDraft(effective)} disabled={!changed.length} className={btnCls} data-testid="content-cancel-btn">Annuler les modifications</button>
+        {editing && (
+          <>
+            <button onClick={save} disabled={!changed.length || saving} className={primaryCls} data-testid="content-save-btn">
+              <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : `Enregistrer${changed.length ? ` (${changed.length})` : ""}`}
+            </button>
+            <button onClick={() => setDraft(effective)} disabled={!changed.length} className={btnCls} data-testid="content-cancel-btn">Annuler les modifications</button>
+          </>
+        )}
         <a href={page.path} target="_blank" rel="noopener noreferrer" className={btnCls} data-testid="content-view-btn"><ExternalLink className="h-3.5 w-3.5" /> Voir sur le site</a>
       </div>
     </div>

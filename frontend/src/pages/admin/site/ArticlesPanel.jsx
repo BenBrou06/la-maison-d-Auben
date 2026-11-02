@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Save, ExternalLink, Trash2 } from "lucide-react";
+import { Plus, Save, ExternalLink, Trash2, Pencil, Check } from "lucide-react";
 import { adminArticles, adminCreateArticle, adminUpdateArticle, adminDeleteArticle, getProducts } from "@/lib/api";
 import { ImageInput, ListEditor, inputCls, primaryCls, btnCls } from "@/pages/admin/site/fields";
 import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
@@ -16,10 +16,13 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const slugify = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const toForm = (a) => ({ ...EMPTY, ...a, published: a.published !== false, published_at: (a.published_at || "").slice(0, 10) });
 
-function Field({ label, children, hint }) {
+const fmt = (iso) => (iso ? new Date(iso).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" }) : "—");
+
+function Field({ label, children, hint, modified, testid }) {
   return (
     <label className="block text-sm font-medium text-[#2C332E]">
-      {label}{hint && <span className="ml-2 text-xs font-normal text-[#626D66]">{hint}</span>}
+      {label}{modified && <span className="ml-2 text-xs text-[#D4A359]" data-testid={`article-modified-${testid}`}>modifié</span>}
+      {hint && <span className="ml-2 text-xs font-normal text-[#626D66]">{hint}</span>}
       <div className="mt-1.5 font-normal">{children}</div>
     </label>
   );
@@ -31,6 +34,14 @@ function ArticleForm({ article, products, onSaved, onDeleted }) {
   const [f, setF] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(isNew);
+  const changedKeys = Object.keys(EMPTY).filter((k) => JSON.stringify(f[k]) !== JSON.stringify(initial[k]));
+  const m = (k) => !isNew && changedKeys.includes(k);
+  const finish = () => {
+    if (changedKeys.length && !window.confirm("Des modifications ne sont pas enregistrées. Les abandonner ?")) return;
+    setF(initial);
+    setEditing(false);
+  };
   const remove = async (word) => {
     try {
       await adminDeleteArticle(article.slug, word);
@@ -65,18 +76,34 @@ function ArticleForm({ article, products, onSaved, onDeleted }) {
 
   return (
     <div className="space-y-4" data-testid="article-form">
-      <Field label="Titre"><input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value, ...(isNew ? { slug: slugify(e.target.value) } : {}) })} className={inputCls} data-testid="article-title-input" /></Field>
-      <Field label="Slug (adresse)" hint={isNew ? "" : "changer le slug redirige l'ancienne adresse"}><input value={f.slug} onChange={ev("slug")} className={inputCls} data-testid="article-slug-input" /></Field>
+      {!isNew && (
+        <dl className="grid gap-3 rounded-xl bg-[#FAF8F5] p-4 text-sm sm:grid-cols-3" data-testid="article-meta">
+          <div><dt className="text-xs text-[#626D66]">Statut</dt><dd className="font-medium text-[#1E3A2B]" data-testid="article-meta-status">{article.published === false ? "Brouillon" : "Publié"}</dd></div>
+          <div><dt className="text-xs text-[#626D66]">Date de publication</dt><dd className="font-medium text-[#1E3A2B]" data-testid="article-meta-published">{fmt(article.published_at)}</dd></div>
+          <div><dt className="text-xs text-[#626D66]">Dernière modification enregistrée</dt><dd className="font-medium text-[#1E3A2B]" data-testid="article-meta-updated">{article.updated_at ? fmt(article.updated_at) : "Aucune depuis la création"}</dd></div>
+        </dl>
+      )}
+      {!isNew && (
+        <div className="flex flex-wrap items-center gap-3">
+          {editing
+            ? <button onClick={finish} className={btnCls} data-testid="article-finish-btn"><Check className="h-3.5 w-3.5" /> Terminer</button>
+            : <button onClick={() => setEditing(true)} className={primaryCls} data-testid="article-edit-btn"><Pencil className="h-4 w-4" /> Modifier</button>}
+          <span className="text-xs text-[#626D66]">{editing ? "Mode édition" : "Consultation — cliquez sur « Modifier » pour changer l'article."}</span>
+        </div>
+      )}
+      <fieldset disabled={!editing} className="space-y-4">
+      <Field label="Titre" modified={m("title")} testid="title"><input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value, ...(isNew ? { slug: slugify(e.target.value) } : {}) })} className={inputCls} data-testid="article-title-input" /></Field>
+      <Field label="Slug (adresse)" modified={m("slug")} testid="slug" hint={isNew ? "" : "changer le slug redirige l'ancienne adresse"}><input value={f.slug} onChange={ev("slug")} className={inputCls} data-testid="article-slug-input" /></Field>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Catégorie"><input value={f.category} onChange={ev("category")} className={inputCls} data-testid="article-category-input" /></Field>
-        <Field label="Date"><input type="date" value={f.published_at} onChange={ev("published_at")} className={inputCls} data-testid="article-date-input" /></Field>
-        <Field label="Lecture (min)"><input type="number" min={1} max={120} value={f.read_time} onChange={ev("read_time")} className={inputCls} data-testid="article-readtime-input" /></Field>
+        <Field label="Catégorie" modified={m("category")} testid="category"><input value={f.category} onChange={ev("category")} className={inputCls} data-testid="article-category-input" /></Field>
+        <Field label="Date de publication" modified={m("published_at")} testid="published_at"><input type="date" value={f.published_at} onChange={ev("published_at")} className={inputCls} data-testid="article-date-input" /></Field>
+        <Field label="Lecture (min)" modified={m("read_time")} testid="read_time"><input type="number" min={1} max={120} value={f.read_time} onChange={ev("read_time")} className={inputCls} data-testid="article-readtime-input" /></Field>
       </div>
-      <Field label="Extrait"><textarea rows={2} value={f.excerpt} onChange={ev("excerpt")} className={inputCls} data-testid="article-excerpt-input" /></Field>
-      <Field label="Image de couverture"><ImageInput value={f.cover_image} onChange={set("cover_image")} testid="article-cover" /></Field>
-      <Field label="Contenu" hint="blocs dans l'ordre d'affichage"><ListEditor value={f.content} item={BLOCK} onChange={set("content")} testid="article-blocks" newItem={{ type: "p", text: "" }} /></Field>
-      <Field label="Texte du bandeau d'appel à l'action" hint="affiché si un produit est associé"><input value={f.cta_text} onChange={ev("cta_text")} className={inputCls} data-testid="article-cta-input" /></Field>
-      <Field label="Produits associés">
+      <Field label="Extrait" modified={m("excerpt")} testid="excerpt"><textarea rows={2} value={f.excerpt} onChange={ev("excerpt")} className={inputCls} data-testid="article-excerpt-input" /></Field>
+      <Field label="Image de couverture" modified={m("cover_image")} testid="cover_image"><ImageInput value={f.cover_image} onChange={set("cover_image")} testid="article-cover" /></Field>
+      <Field label="Contenu" modified={m("content")} testid="content" hint="blocs dans l'ordre d'affichage"><ListEditor value={f.content} item={BLOCK} onChange={set("content")} testid="article-blocks" newItem={{ type: "p", text: "" }} /></Field>
+      <Field label="Texte du bandeau d'appel à l'action" modified={m("cta_text")} testid="cta_text" hint="affiché si un produit est associé"><input value={f.cta_text} onChange={ev("cta_text")} className={inputCls} data-testid="article-cta-input" /></Field>
+      <Field label="Produits associés" modified={m("related_product_slugs")} testid="related_product_slugs">
         <div className="flex flex-wrap gap-3" data-testid="article-products">
           {products.map((p) => (
             <label key={p.slug} className="flex items-center gap-1.5 text-xs">
@@ -88,15 +115,24 @@ function ArticleForm({ article, products, onSaved, onDeleted }) {
         </div>
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Titre SEO" hint="vide = titre de l'article"><input value={f.seo_title} onChange={ev("seo_title")} className={inputCls} data-testid="article-seo-title-input" /></Field>
-        <Field label="Meta description" hint="vide = extrait"><input value={f.seo_description} onChange={ev("seo_description")} className={inputCls} data-testid="article-seo-desc-input" /></Field>
+        <Field label="Titre SEO" modified={m("seo_title")} testid="seo_title" hint="vide = titre de l'article"><input value={f.seo_title} onChange={ev("seo_title")} className={inputCls} data-testid="article-seo-title-input" /></Field>
+        <Field label="Meta description" modified={m("seo_description")} testid="seo_description" hint="vide = extrait"><input value={f.seo_description} onChange={ev("seo_description")} className={inputCls} data-testid="article-seo-desc-input" /></Field>
       </div>
       <label className="flex items-center gap-2 text-sm font-medium text-[#2C332E]">
         <input type="checkbox" checked={f.published} onChange={(e) => set("published")(e.target.checked)} className="h-4 w-4 accent-[#3B6B4C]" data-testid="article-published-checkbox" />
         Publié (visible sur le site et dans le sitemap)
+        {m("published") && <span className="text-xs text-[#D4A359]" data-testid="article-modified-published">modifié</span>}
       </label>
+      </fieldset>
       <div className="flex flex-wrap gap-3 border-t border-[#E2DDD5] pt-4">
-        <button onClick={save} disabled={saving || !f.title.trim() || !f.slug.trim()} className={primaryCls} data-testid="article-save-btn"><Save className="h-4 w-4" /> {isNew ? "Créer l'article" : "Enregistrer"}</button>
+        {editing && (
+          <>
+            <button onClick={save} disabled={saving || !f.title.trim() || !f.slug.trim() || (!isNew && !changedKeys.length)} className={primaryCls} data-testid="article-save-btn">
+              <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : isNew ? "Créer l'article" : `Enregistrer${changedKeys.length ? ` (${changedKeys.length})` : ""}`}
+            </button>
+            {!isNew && <button onClick={() => setF(initial)} disabled={!changedKeys.length} className={btnCls} data-testid="article-cancel-btn">Annuler les modifications</button>}
+          </>
+        )}
         {!isNew && f.published && <a href={`/ressources/${article.slug}`} target="_blank" rel="noopener noreferrer" className={btnCls} data-testid="article-view-btn"><ExternalLink className="h-3.5 w-3.5" /> Voir sur le site</a>}
         {!isNew && (
           <button type="button" onClick={() => setConfirmDelete(true)} className={`${btnCls} ml-auto text-[#8A2A1F]`} data-testid="article-delete-btn">

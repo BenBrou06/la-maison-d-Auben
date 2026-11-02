@@ -36,13 +36,23 @@ export default function ProductDetail() {
     if (!waiver) return;
     setBuying(true);
     try {
-      const { checkout_url } = await createCheckout({
+      const res = await createCheckout({
         lookup_key: product.lookup_key, origin_url: window.location.origin,
         withdrawal_waiver: true, withdrawal_consent_version: WITHDRAWAL_CONSENT_VERSION,
       });
-      window.location.href = checkout_url;
+      // Pas d'URL Stripe valide = échec (jamais de redirection vers une adresse vide).
+      if (!/^https:\/\/checkout\.stripe\.com\//.test(res?.checkout_url || "")) throw Object.assign(new Error("no_checkout_url"), { kind: "session" });
+      window.location.href = res.checkout_url;
     } catch (e) {
-      toast.error("Le paiement n'a pas pu démarrer. Réessayez.");
+      const status = e.response?.status;
+      const kind = e.kind || (e.response ? "api" : "network");
+      if (process.env.NODE_ENV !== "production") console.error("[checkout]", kind, status, e.response?.data?.detail || e.message);
+      toast.error(
+        kind === "network" ? "Connexion impossible au service de paiement. Vérifiez votre connexion puis réessayez."
+          : status === 409 ? "Ce produit n'est pas disponible à l'achat pour le moment."
+          : status === 400 ? (e.response?.data?.detail || "Merci de cocher la case relative au droit de rétractation.")
+          : "Le paiement n'a pas pu démarrer. Réessayez dans un instant.",
+      );
       setBuying(false);
     }
   };

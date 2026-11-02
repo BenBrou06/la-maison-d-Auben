@@ -247,9 +247,16 @@ async def get_categories():
     return cats
 
 
+def lookup_of(p: dict) -> str:
+    # Clé Stripe du produit ; dérivée du slug si absente en base (même règle que la création admin).
+    return p.get("lookup_key") or p["slug"].replace("-", "_")
+
+
 def with_purchasable(p):
     """Un produit est achetable s'il a un VRAI fichier associé ET un prix défini."""
     if p is not None:
+        p["lookup_key"] = lookup_of(p)
+        p["currency"] = p.get("currency") or "eur"
         p["purchasable"] = (
             bool(p.get("download_storage_path"))
             and not p.get("download_is_placeholder")
@@ -411,9 +418,9 @@ def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = 
 async def ensure_stripe_catalog():
     # Source de vérité = prix en base (édité via l'admin), jamais le prix du seed.
     try:
-        async for p in db.products.find({"price": {"$gt": 0}, "lookup_key": {"$nin": [None, ""]},
+        async for p in db.products.find({"price": {"$gt": 0},
                                          "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
-            sync_stripe_price(p["lookup_key"], p["name"], p["price"], p.get("currency", "eur"))
+            sync_stripe_price(lookup_of(p), p["name"], p["price"], p.get("currency") or "eur")
         logger.info("Stripe catalog ensured")
     except Exception as e:
         logger.error(f"Stripe catalog setup failed: {e}")
@@ -423,6 +430,10 @@ async def ensure_stripe_catalog():
 async def create_checkout(request: Request, req: CheckoutInput):
     check_rate(request, "checkout", 20)
     product = await db.products.find_one({"lookup_key": req.lookup_key}, {"_id": 0})
+    if not product:
+        # Produit sans lookup_key enregistré : clé dérivée de son slug (voir lookup_of).
+        product = await db.products.find_one(
+            {"slug": req.lookup_key.replace("_", "-"), "lookup_key": {"$in": [None, ""]}}, {"_id": 0})
     # Gating : aucun checkout (ni session Stripe) pour un produit sans vrai fichier + prix.
     if (not product or not product.get("download_storage_path")
             or product.get("download_is_placeholder") or not product.get("price")):
@@ -435,7 +446,7 @@ async def create_checkout(request: Request, req: CheckoutInput):
         "ip": _client_ip(request), "user_agent": request.headers.get("user-agent", "")[:300],
     }
     expected = int(round(product["price"] * 100))
-    currency = product.get("currency", "eur")
+    currency = product.get("currency") or "eur"
     prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
     if not prices or prices[0].unit_amount != expected or prices[0].currency != currency:
         # Le prix Stripe doit toujours être celui affiché sur le site (prix en base).
@@ -464,7 +475,8 @@ async def create_checkout(request: Request, req: CheckoutInput):
                 **kwargs, automatic_tax={"enabled": True}, billing_address_collection="required",
             )
         else:
-            raise
+            logger.error(f"Checkout Stripe error for {req.lookup_key}: {type(e).__name__} code={e.code} msg={e.user_message}")
+            raise HTTPException(502, "Paiement momentanément indisponible. Réessayez.")
     await db.payment_transactions.insert_one({
         "session_id": session.id, "lookup_key": req.lookup_key,
         "product_slug": product["slug"] if product else "",
@@ -865,7 +877,7 @@ async def upload_product_file(slug: str, file: UploadFile = File(...), admin=Dep
     prod = await db.products.find_one({"slug": slug}, {"_id": 0})
     if prod and prod.get("price"):
         try:
-            sync_stripe_price(prod["lookup_key"], prod["name"], prod["price"], prod.get("currency", "eur"))
+            sync_stripe_price(lookup_of(prod), prod["name"], prod["price"], prod.get("currency") or "eur")
         except Exception as e:
             logger.error(f"Stripe price sync after upload failed for {slug}: {e}")
     return {"status": "ok", "filename": filename}

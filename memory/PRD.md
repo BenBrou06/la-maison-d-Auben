@@ -157,3 +157,10 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Produits : envoi des seuls champs modifiés (prix/statut/fichier jamais touchés). FAQ : suivi par question + note suppressions/ordre.
 - Tests : iteration_16 frontend 100 % ; aucun historique persistant ajouté ; aucun déploiement.
 
+
+## 2026-06 — Incident paiement « Suivi sportif » (Preview corrigé, NON publié)
+- Cause : en Production le document produit suivi-sportif n'a ni lookup_key ni currency → front envoie lookup_key undefined → 422 (6× dans les logs, confirmé par le deployer en lecture seule).
+- Correctif server.py : lookup_of(p) (clé dérivée du slug si absente, même règle que la création admin) dans with_purchasable, ensure_stripe_catalog, upload fichier ; checkout retrouve le produit par slug si lookup_key absent ; currency `or "eur"` ; erreur Stripe journalisée (type/code/message, sans secret) → 502.
+- ProductDetail.jsx : refuse toute réponse sans URL checkout.stripe.com ; messages distincts réseau / 409 / 400 / autre ; détails techniques en console hors production uniquement.
+- Preview : suivi-sportif mis à 4,99 € + fichier TEST + lookup_key/currency retirés pour reproduire la Prod. Session TEST 499 EUR, redirection Stripe OK desktop + mobile ; budget 699 OK ; coming_soon 409 ; sans case 400 ; aucune commande créée.
+- À noter : l'API publique produit expose download_storage_path (à masquer plus tard).

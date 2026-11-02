@@ -142,3 +142,10 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Logo commun : champ header.favicon = « Logo du site » → Logo.jsx (en-tête, pied, admin) + SiteFavicon ; défaut /images/logo-176.png (logo officiel). Aperçu 44/16/32 px.
 - Tests : tests/test_second_audit.py 5/5 ; iteration_14 UI OK ; test_site_content 12/12, test_audit_fixes 15/15, compliance 15/15.
 - PRODUCTION.md §9 : CORS, règles Cloudflare (anti-iframe, 301), dépendances (starlette 0.37.2 à mettre à jour), hébergeur, questions sauvegardes.
+
+## 2026-06 — Admin Pages/Articles : mode édition et suivi (Preview, NON déployé)
+- content/adminLabels.js : groupes, intitulés clairs, aides « Visible : … » (présentation uniquement, schema.js inchangé).
+- SitePagesPanel : Modifier/Terminer, fieldset en lecture seule, « Texte d origine » + Enregistrer/Annuler seulement en édition ; suivi modif. inchangé.
+- ArticlesPanel : encadré Statut / Date de publication / Dernière modification ; Modifier/Terminer ; « modifié » par champ ; Enregistrer (X) ; Annuler. Backend inchangé (updated_at à chaque enregistrement, published_at intact).
+- fields.jsx : style des champs désactivés.
+- Tests : test_site_content 13/13 (TestArticleEditTracking) ; iteration_15 UI 100%.

@@ -1,0 +1,38 @@
+{
+  "summary": "Frontend E2E (Playwright, public URL) of the admin Pages + Articles UX update (Modifier/Terminer edit mode, grouped fieldsets, change tracking, Articles meta box). All requested scenarios passed. Data left as found: site_content has no overrides (the home doc now exists with fields {}, same as header), and only the 3 real articles remain, unchanged (they match the pre-test API snapshot exactly).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Pages / Articles read-only mode", "issues": ["Disabled inputs inside fieldset[disabled] look the same as editable ones (no grey background or opacity change). The text 'Consultation — cliquez sur « Modifier »' is the only cue. Consider adding disabled:bg-[#FAF8F5] disabled:cursor-not-allowed to inputCls."]},
+      {"screen": "Admin Pages mobile 390px", "issues": ["Long legends such as 'Bandeau principal de la page d'accueil' + 'Visible : …' wrap onto 3 lines and cut across the fieldset top border. Consider putting 'Visible : …' on its own line with block text-xs, or moving it under the legend."]},
+      {"screen": "Admin Articles read-only mode", "issues": ["'Supprimer l'article' stays active outside edit mode. It is protected by the SUPPRIMER dialog, so this is only a consistency note."]}
+    ]
+  },
+  "passed_tests": [
+    "Pages/Accueil read-only: hero_eyebrow disabled; 0 content-reset-*, no save/cancel; content-edit-btn visible; 8 legends with 'Visible : …'; every requested label present; no 'Autres réglages' group (all home fields mapped)",
+    "Edit mode: inputs enabled; save shows 'Enregistrer', disabled when nothing changed; 1 edit -> content-modified-hero_eyebrow + 'Enregistrer (1)'; 2nd edit -> 'Enregistrer (2)'; cancel reverts both, 0 badges",
+    "content-finish-btn with unsaved changes: Cancel in the confirm keeps the edits, OK discards them and returns to read-only. Switching page with unsaved changes asks for confirmation (Cancel stays, OK switches and discards). Clean switch: no dialog",
+    "Save: toast 'Contenu enregistré.', still in edit mode, badge cleared; after reload the value persisted, the list shows 'Accueil 1 modif.', content-reset-hero_eyebrow appears only in edit mode; reset + save restored the default, 'modif.' count gone",
+    "Articles (comment-faire-son-budget-mensuel): meta status Publié, published '15 janvier 2026 à 09:00', updated shown; fields disabled until article-edit-btn; changing only the excerpt -> only article-modified-excerpt, 'Enregistrer (1)'; cancel reverts",
+    "Synthetic 'Fictif suivi' (slug auto fictif-suivi, Publié unchecked): created as Brouillon. Excerpt edit + save, then reload: published_at unchanged, updated_at moved (10:02 -> 10:03), status still Brouillon, list shows 'Brouillon (non publié)', no 'Voir sur le site' button. Deleted via the SUPPRIMER dialog; its public URL now shows 'Article introuvable.'",
+    "Public / and /ressources/comment-faire-son-budget-mensuel render with no admin controls and no TEST text; no horizontal overflow on admin Pages (1920 + 390, read-only and edit) or on the public pages at 390"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "Optional: add a visual disabled style for read-only inputs",
+    "Optional: improve fieldset legend wrapping on mobile"
+  ],
+  "critical_code_review_comments": [
+    "ArticlesPanel: after creation, 'Dernière modification enregistrée' already shows a timestamp (the backend sets updated_at on create), so the fallback 'Aucune depuis la création' is never shown for new articles. Harmless.",
+    "SitePagesPanel: setDirty(false) runs on page switch, but PageForm's onDirty effect does not reset on unmount. This works today because the form is keyed per page.",
+    "ArticleForm: 'initial' is rebuilt on every render (toForm(article)). It works, but a useMemo would be cleaner."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100%"},
+  "seed_data_creation": "Created the synthetic article 'fictif-suivi' and deleted it. The home override was saved and then reset. Net change: the home site_content doc now exists with empty fields.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Admin testids: admin-tab-pages / admin-tab-articles; content-page-<key>, content-page-form-<key>, content-edit-btn / content-finish-btn, content-field-<name>, content-modified-<name>, content-reset-<name> (edit mode only), content-save-btn, content-cancel-btn. Articles: article-item-<slug>, article-meta-status/-published/-updated, article-edit-btn / article-finish-btn, article-*-input, article-modified-<key>, article-save-btn, article-cancel-btn, article-delete-btn -> delete-article-input / delete-article-submit. Confirm dialogs are window.confirm, so use a page.on('dialog') handler."
+}

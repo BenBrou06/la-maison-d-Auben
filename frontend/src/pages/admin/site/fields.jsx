@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { ArrowUp, ArrowDown, Trash2, Plus, ImagePlus, RotateCcw } from "lucide-react";
 import { adminUploadImage, mediaUrl } from "@/lib/api";
 
-export const inputCls = "w-full rounded-xl border border-[#E2DDD5] bg-white px-3.5 py-2.5 text-sm text-[#2C332E] focus:border-[#3B6B4C] focus:outline-none";
+export const inputCls = "w-full rounded-xl border border-[#E2DDD5] bg-white px-3.5 py-2.5 text-sm text-[#2C332E] focus:border-[#3B6B4C] focus:outline-none disabled:cursor-default disabled:bg-[#FAF8F5] disabled:text-[#4A544D]";
 export const btnCls = "inline-flex items-center gap-1.5 rounded-xl border border-[#E2DDD5] bg-white px-3 py-2 text-xs font-medium text-[#1E3A2B] hover:bg-[#FAF8F5] disabled:opacity-50";
 export const primaryCls = "inline-flex items-center gap-2 rounded-xl bg-[#1E3A2B] px-5 py-2.5 text-sm font-medium text-[#FAF8F5] hover:bg-[#3B6B4C] disabled:cursor-not-allowed disabled:opacity-50";
 

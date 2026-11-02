@@ -86,8 +86,8 @@ function PageForm({ page, stored, products, onSaved, onDirty }) {
         <fieldset key={g.title} disabled={!editing} className="space-y-4 rounded-2xl border border-[#E2DDD5] p-5" data-testid={`content-group-${g.title}`}>
           <legend className="px-2">
             <span className="font-serif text-base font-semibold text-[#1E3A2B]">{g.title}</span>
-            {g.where && <span className="ml-2 text-xs text-[#626D66]">Visible : {g.where}</span>}
           </legend>
+          {g.where && <p className="-mt-2 text-xs text-[#626D66]">Visible : {g.where}</p>}
           {g.fields.map((f) => (
             <div key={f.name}>
               <div className="mb-1.5 flex items-center justify-between gap-3">

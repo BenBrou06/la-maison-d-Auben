@@ -8,16 +8,17 @@ import { ImageInput, ListEditor, ResetButton, inputCls, primaryCls, btnCls } fro
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-// Aperçu du favicon tel qu'il apparaîtra dans un onglet (16 px) et sur mobile (32 px), avant enregistrement.
+// Aperçu du logo commun : en-tête (44 px), onglet (16 px), mobile (32 px), avant enregistrement.
 function FaviconPreview({ value }) {
-  const src = value ? mediaUrl(value) : "/images/favicon-32.png";
+  const src = value ? mediaUrl(value) : "/images/logo-176.png";
   return (
     <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl bg-[#FAF8F5] p-3 text-xs text-[#626D66]" data-testid="favicon-preview">
+      <img src={src} alt="" className="h-11 w-11 rounded-lg object-contain" data-testid="logo-preview-header" />
       <span className="flex items-center gap-2 rounded-t-lg border border-b-0 border-[#E2DDD5] bg-white px-3 py-1.5 text-[#2C332E]">
         <img src={src} alt="" className="h-4 w-4 object-contain" data-testid="favicon-preview-16" /> La Maison d'Auben
       </span>
       <img src={src} alt="" className="h-8 w-8 rounded object-contain" data-testid="favicon-preview-32" />
-      <span>{value ? "Nouveau favicon (enregistrez pour l'appliquer)" : "Favicon d'origine"}</span>
+      <span>{value ? "Nouveau logo (enregistrez pour l'appliquer à l'en-tête, au pied de page et au favicon)" : "Logo officiel"}</span>
     </div>
   );
 }

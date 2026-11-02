@@ -9,6 +9,7 @@ from typing import List, Optional
 import stripe
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, UploadFile, File, Response
 from starlette.middleware.cors import CORSMiddleware
+from cors_config import cors_origins
 from pydantic import BaseModel, EmailStr, Field, StrictBool, field_validator
 from pymongo.errors import DuplicateKeyError
 from starlette.responses import JSONResponse
@@ -1056,17 +1057,16 @@ async def api_security_headers(request: Request, call_next):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
     return response
 
-# CORS : configurable via CORS_ORIGINS. "*" (ou vide) = reflet de l'origine (preview/dev).
-# En production, définir CORS_ORIGINS="https://auben-preview-shop.emergent.host" (+ autres si besoin).
-_cors = (os.environ.get("CORS_ORIGINS") or "*").strip()
-if _cors == "*":
-    app.add_middleware(
-        CORSMiddleware, allow_origin_regex=".*",
-        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[o.strip() for o in _cors.split(",") if o.strip()],
-        allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-    )
+# CORS. L'admin s'authentifie par en-tête Authorization (pas de cookie) : aucun credential cross-origin n'est autorisé.
+# Production (STRIPE_MODE=live) : liste explicite CORS_ORIGINS (séparée par des virgules). Une valeur vide ou "*" est
+# ignorée et remplacée par l'origine de PUBLIC_BASE_URL et sa variante www — jamais d'origine générique en production.
+CORS_ALLOWED_ORIGINS = cors_origins(STRIPE_MODE, os.environ.get("CORS_ORIGINS", ""), PUBLIC_BASE_URL)
+if STRIPE_MODE == "live" and (os.environ.get("CORS_ORIGINS", "").strip() in ("", "*")):
+    logger.warning(f"CORS_ORIGINS vide ou '*' ignoré en production ; origines autorisées : {CORS_ALLOWED_ORIGINS}")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)

@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend E2E test of contact messaging (public /contact consent checkbox + admin Messages tab: status badges, consent line, reply composer, simulated failure/retry, double-click, mark handled/new, delete) at desktop 1920 and mobile 390. All 8 requested scenarios PASS. I also inserted one old-format message directly into Mongo for testing. It displayed as Nouveau + 'non autorisé', and replies to it were blocked. All 4 test messages were deleted through the UI (the DB now holds 0 contact-test messages).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/messages/{id}/reply", "issue": "If deliver() raises an exception that is not a ValueError (e.g. network error from send_email in real mode), the reply entry stays in status 'sending' forever. The $ne 'sending' filter then blocks every future reply to that message with a 409. Wrap the send in try/except and mark the entry as failed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "MessagesPanel ReplyBox", "issue": "The double-send guard uses React state (`sending`), so clicks fired in the same tick (3 synchronous JS clicks) sent 3 POSTs. The backend request_id check stopped any duplicate (only 1 reply was stored), but the 409s showed a red error toast next to the success toast. The catch block also creates a new reqId on the 409, which weakens the protection. A real mouse double-click (page.dblclick) sent only 1 POST and showed only the success toast. Fix: add a useRef boolean guard, and on a 409 do not create a new reqId or show an error.", "selector": "reply-send-{id}", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Messages", "issues": ["Once a message has the status 'Réponse envoyée' (answered), there is no 'Marquer comme traité' button, so an answered message can never be set to 'Traité'. Consider showing mark-handled for the answered status too."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: add a useRef synchronous guard in ReplyBox.send and handle 409 quietly (keep the reqId, no error toast)",
+    "Optional: let answered messages be marked 'Traité'",
+    "Optional: in the reply route, catch unexpected exceptions from deliver() so no entry stays stuck in 'sending'"
+  ],
+  "critical_code_review_comments": [
+    "contact_admin.py reply(): an exception other than ValueError leaves the reply in 'sending', which blocks all later replies to the message",
+    "MessagesPanel ReplyBox: `sending` state guard is not synchronous; reqId is regenerated on every error, including 409"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend only)", "frontend": "100% of requested scenarios (8/8)"},
+  "seed_data_creation": "Created 3 messages via /contact (noconsent@, consent@, mobile@contact-test.example.com) and inserted 1 old-format message directly into Mongo (id test-oldformat-0001). All 4 were deleted through the UI delete dialog.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Verified: checkbox unchecked by default, so the form submits with or without consent. Admin side: dry-run banner shown; amber left border on new messages; consent line text correct; multi-line body kept. With consent: recipient is a read-only span and the subject is prefilled 'Re: <subject>'. Without consent: reply-blocked shown and inputs disabled. [SIMULER-ECHEC] gives a 424 toast ('n'a pas été envoyée'), the history shows 'Échec de l'envoi (simulation)' and the status stays Nouveau; the retry succeeds and the status becomes 'Réponse envoyée'. Handled and new toggles work. Delete needs SUPPRIMER typed. Mobile 390: no horizontal overflow (scrollWidth 390) and long emails wrap."
+}

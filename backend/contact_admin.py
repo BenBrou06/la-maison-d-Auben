@@ -107,6 +107,9 @@ async def deliver(*, to: str, subject: str, html: str, reply_to: str = None):
     except ValueError as e:
         logger.warning(f"Contact e-mail bloqué par le filtre de sécurité : {e}")
         return None, "Contenu bloqué par le filtre de sécurité e-mail."
+    except Exception as e:
+        logger.error(f"Contact e-mail : erreur inattendue ({type(e).__name__})")
+        return None, "Erreur inattendue lors de l'envoi."
 
 
 def _status(eid, err):

@@ -77,11 +77,11 @@ function MessageCard({ m, onDelete, refresh }) {
         <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2DDD5] px-3 py-1.5 text-sm text-[#1E3A2B] hover:border-[#87A987]" data-testid={`message-reply-btn-${m.id}`}>
           <Reply className="h-4 w-4" /> Répondre
         </button>
-        {isNew ? (
+        {m.status !== "handled" ? (
           <button onClick={() => setStatus("handled")} className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2DDD5] px-3 py-1.5 text-sm text-[#1E3A2B] hover:border-[#87A987]" data-testid={`message-mark-handled-${m.id}`}>
             <CheckCircle2 className="h-4 w-4" /> Marquer comme traité
           </button>
-        ) : m.status === "handled" && (
+        ) : (
           <button onClick={() => setStatus("new")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[#626D66] hover:underline" data-testid={`message-mark-new-${m.id}`}>
             <RotateCcw className="h-4 w-4" /> Remettre en nouveau
           </button>
@@ -125,19 +125,22 @@ function ReplyBox({ m, onDone, refresh }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const reqId = useRef(crypto.randomUUID());
+  const busy = useRef(false);
   const allowed = hasConsent(m);
   const send = async () => {
-    if (sending || !body.trim()) return;
+    if (busy.current || !body.trim()) return;
+    busy.current = true;
     setSending(true);
     try {
       const r = await adminReplyMessage(m.id, { request_id: reqId.current, subject, body });
       toast.success(r.simulated ? "Réponse enregistrée (simulation, aucun e-mail réel)." : "Réponse envoyée au client.");
       onDone();
     } catch (e) {
+      if (e.response?.status === 409) { refresh(); return; }
       toast.error(e.response?.data?.detail || "La réponse n'a pas pu être envoyée.");
       reqId.current = crypto.randomUUID();
       refresh();
-    } finally { setSending(false); }
+    } finally { busy.current = false; setSending(false); }
   };
   const field = "w-full rounded-lg border border-[#E2DDD5] bg-white px-3 py-2 text-sm text-[#2C332E] focus:outline-none focus:ring-2 focus:ring-[#87A987] disabled:bg-[#F2EDE4]";
   return (

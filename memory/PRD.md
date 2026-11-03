@@ -175,3 +175,9 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - À signaler : la synchro Stripe existante au démarrage (ensure_stripe_catalog) et au checkout crée/aligne toujours les prix automatiquement (comportement antérieur, non modifié).
 - 2026-06 : correction APPLIQUÉE en Preview (5 fiches, avant/après : seuls lookup_key+currency ajoutés ; 2e exécution 0 changement ; tests 23/23). Simulation Production en lecture seule (deployer, plan() sur docs réels) : 5 à compléter, 0 ignorés, aucune collision ; suivi-sportif 5,99 € fichier Suivi-Sport.xlsx. Stripe LIVE non lu directement par le deployer. Production NON modifiée.
 - 2026-06 : CORRECTION PRODUCTION APPLIQUÉE (accord explicite) via PUT /api/admin/products/{slug} {lookup_key,currency} sur les 5 fiches ; aucun appel Stripe ; diff BEFORE/AFTER (memory/prod_products_BEFORE_fix.md / _AFTER_fix.md) : exactement 10 champs ajoutés, 0 modifié/supprimé, budget-mensuel identique, suivi-sportif 5,99 €. Secrets PROD_ADMIN_EMAIL/PASSWORD ajoutés en Preview pour l'opération : à supprimer + changer le mot de passe admin Prod.
+
+## 2026-11 — Messagerie contact (Preview uniquement, non publié)
+- backend/contact_admin.py : consentement par demande (contact-suivi-v1, horodaté), notification OWNER_EMAIL systématique, confirmation + réponses seulement si consentement, reply_to = OWNER_EMAIL, historique `replies` (status sending/sent/failed, email_id), anti-doublon request_id atomique, statut new/answered/handled, 424 en échec d'envoi.
+- CONTACT_EMAIL_DRY_RUN="true" dans backend/.env Preview, actif seulement si PUBLIC_BASE_URL est un domaine preview ; marqueur [SIMULER-ECHEC] = échec simulé.
+- Front : Contact.jsx (case facultative), admin/MessagesPanel.jsx (extrait d'AdminDashboard).
+- Tests : backend/tests/test_contact_messages.py 10 passed (-n 0, via localhost avec X-Forwarded-For varié) ; iteration_18 frontend 8/8 ; 1 vrai e-mail d'essai (modèle réponse) envoyé à OWNER_EMAIL.

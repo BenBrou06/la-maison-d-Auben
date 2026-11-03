@@ -117,7 +117,7 @@ def reply_html(m: dict, body: str) -> str:
 async def deliver(*, to: str, subject: str, html: str, reply_to: str = None) -> dict:
     if DRY_RUN:
         try:
-            _assert_safe_email(subject, html)
+            _assert_safe_email(subject, html, contextual=True)
         except ValueError as e:
             return {"id": None, "kind": "refused_local", "error": str(e)}
         if MARK_SLOW in html:
@@ -129,7 +129,7 @@ async def deliver(*, to: str, subject: str, html: str, reply_to: str = None) -> 
         logger.info(f"[SIMULATION] e-mail non envoyé : {subject!r}")
         return {"id": f"simulated-{uuid.uuid4().hex[:12]}"}
     try:
-        return await send_email_result(to=to, subject=subject, html=html, reply_to=reply_to)
+        return await send_email_result(to=to, subject=subject, html=html, reply_to=reply_to, contextual=True)
     except Exception as e:
         logger.error(f"Contact e-mail : erreur inattendue ({type(e).__name__})")
         return {"id": None, "kind": "temporary", "error": type(e).__name__}

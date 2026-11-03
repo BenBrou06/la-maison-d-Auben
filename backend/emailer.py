@@ -3,7 +3,7 @@ import re
 import ipaddress
 import logging
 import httpx
-from html import escape
+from html import escape, unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -19,6 +19,48 @@ _CRED_ASK = ("reply with your password", "reply with the code", "send your passw
              "send us your password", "enter your password below", "confirm your card number",
              "your full card number", "seed phrase", "recovery phrase", "verify your card",
              "social security number", "confirm your bank details")
+# Règles contextuelles (messagerie de contact) : on bloque une DEMANDE d'identifiants ou une VRAIE donnée sensible,
+# pas la simple mention d'un terme (« CVV », « mot de passe ») dans une explication.
+_GENERIC_TERMS = ("cvv", "seed phrase", "recovery phrase", "social security number")
+_SECRET = (r"(?:mot de passe|mdp|code pin|code secret|code (?:de v[ée]rification|re[çc]u par sms|de s[ée]curit[ée])|cvv|cvc|"
+           r"cryptogramme|num[ée]ro (?:complet )?de (?:votre )?carte(?: bancaire)?|donn[ée]es bancaires|coordonn[ée]es bancaires|"
+           r"identifiants?|password|passcode|pin(?: code)?|card number|bank details|seed phrase|recovery phrase|"
+           r"security code|one-time code|verification code|social security number)")
+_ASK = re.compile(
+    r"\b(?:envoyez|envoie|envoyer|communiquez|communique|communiquer|transmettez|transmets|transmettre|donnez|donne|donner|"
+    r"indiquez|indique|indiquer|confirmez|confirme|confirmer|saisissez|saisis|saisir|fournissez|fournir|renseignez|renseigner|"
+    r"r[ée]pondez avec|send|give|provide|confirm|enter|reply with|tell)"
+    r"(?:[- ](?:nous|moi|us|me))?\s+(?:votre|vos|ton|tes|your|the)\s+(?:\w+\s+){0,2}?" + _SECRET, re.I)
+_NEGATION = re.compile(r"(?:\bne\b|\bn'|\bjamais\b|\bnever\b|\bdon't\b|\bdo not\b|\bnot\b)", re.I)
+_CVV_VALUE = re.compile(r"\b(?:cvv|cvc|cryptogramme)\s*[:=]?\s*\d{3,4}\b", re.I)
+_CARD = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
+
+
+def _luhn(digits: str) -> bool:
+    total, alt = 0, False
+    for ch in reversed(digits):
+        d = int(ch)
+        if alt:
+            d = d * 2 - 9 if d > 4 else d * 2
+        total += d
+        alt = not alt
+    return total % 10 == 0
+
+
+def contextual_sensitive_issue(text: str):
+    """Motif de refus contextuel, ou None."""
+    for m in _ASK.finditer(text):
+        if not _NEGATION.search(text[max(0, m.start() - 30):m.start()]):
+            return f"demande d'identifiant ou de donnée sensible : « {m.group(0)} »"
+    if _CVV_VALUE.search(text):
+        return "code de sécurité de carte (CVV) communiqué"
+    for m in _CARD.finditer(text):
+        digits = re.sub(r"\D", "", m.group(0))
+        if 13 <= len(digits) <= 19 and _luhn(digits):
+            return "numéro de carte bancaire communiqué"
+    return None
+
+
 _HOSTISH = re.compile(r"\b(?:https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,})", re.I)
 
 
@@ -60,15 +102,21 @@ class _EmailScan(HTMLParser):
             self._href, self._text = None, []
 
 
-def _assert_safe_email(subject: str, html: str) -> None:
+def _assert_safe_email(subject: str, html: str, contextual: bool = False) -> None:
     scan = _EmailScan()
     scan.feed(html)
     if scan.tags & {"form", "input", "textarea", "select"}:
         raise ValueError("No forms or input fields in email (G2)")
     body = f"{subject}\n{html}".lower()
     for p in _CRED_ASK:
+        if contextual and p in _GENERIC_TERMS:
+            continue
         if p in body:
             raise ValueError(f"Email asks the recipient for credentials: {p!r} (G2)")
+    if contextual:
+        issue = contextual_sensitive_issue(unescape(re.sub(r"<[^>]+>", " ", f"{subject}\n{html}")))
+        if issue:
+            raise ValueError(f"Contenu sensible : {issue} (G2)")
     for url in scan.urls:
         low = url.strip().lower()
         if low.startswith(("mailto:", "tel:", "cid:", "#")):
@@ -87,10 +135,10 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} != real link host {real!r} (G3)")
 
 
-async def send_email_result(*, to: str, subject: str, html: str, reply_to: str = None) -> dict:
+async def send_email_result(*, to: str, subject: str, html: str, reply_to: str = None, contextual: bool = False) -> dict:
     """{"id"} si accepté, sinon {"kind": refused_local|refused|temporary, "error"}."""
     try:
-        _assert_safe_email(subject, html)
+        _assert_safe_email(subject, html, contextual=contextual)
     except ValueError as e:
         return {"id": None, "kind": "refused_local", "error": str(e)}
     payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}

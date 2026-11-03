@@ -1,6 +1,7 @@
 # Demandes de contact (Preview, CONTACT_EMAIL_DRY_RUN) : sans case, file d'envoi, réponses, échecs, blocages, doublons. `-n 0`.
 import os
 import re
+import sys
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -118,18 +119,67 @@ def test_temporary_failure_auto_retry_then_manual(h):
     assert get(m["id"])["message"] == "texte [SIMULER-ECHEC]"
 
 
-def test_security_filter_owner_fallback_and_reply_refused(h):
-    m, _ = post(message="Mon CVV ne passe pas, que faire ?")
+def test_explanatory_mentions_pass_filter(h):
+    m, _ = post(message="Mon CVV ne passe pas et j'ai oublié mon mot de passe, que faire ?")
+    m = wait(m["id"], done)
+    assert m["owner_notification"]["status"] == "sent" and not m["owner_notification"]["content_omitted"]
+    assert m["confirmation"]["status"] == "sent"
+    assert reply(h, m["id"], body="Ne communiquez jamais votre CVV ni votre mot de passe, à personne.").status_code == 200
+
+
+def test_real_sensitive_data_owner_fallback_and_reply_refused(h):
+    msg = "Voici ma carte 4111 1111 1111 1111, cvv: 123"
+    m, _ = post(message=msg)
     m = wait(m["id"], done)
     assert m["owner_notification"]["status"] == "sent" and m["owner_notification"]["content_omitted"] is True
-    assert m["message"] == "Mon CVV ne passe pas, que faire ?"
-    r = reply(h, m["id"], body="Ne communiquez jamais votre cvv.")
+    assert m["message"] == msg
+    r = reply(h, m["id"], body="Envoyez-nous votre mot de passe pour vérifier.")
     assert r.status_code == 424 and "filtre de sécurité" in r.json()["detail"]
     rep = get(m["id"])["replies"][0]
     assert rep["status"] == "failed" and rep["error_kind"] == "refused_local"
     bad = requests.post(f"{API}/admin/messages/{m['id']}/replies/{rep['id']}/retry", headers=h, json={"request_id": uuid.uuid4().hex})
     assert bad.status_code == 400
     assert reply(h, m["id"], body="Pas de souci, voici la marche à suivre.").status_code == 200
+
+
+def test_injected_form_and_bad_links_still_blocked():
+    import sys
+    sys.path.insert(0, "/app/backend")
+    from emailer import _assert_safe_email
+    for html in ("<form><input></form>", '<a href="http://x.test">x</a>', '<a href="https://bit.ly/a">x</a>',
+                 '<a href="https://evil.test">paypal.com</a>', "<p>please send us your password</p>"):
+        with pytest.raises(ValueError):
+            _assert_safe_email("s", html, contextual=True)
+    with pytest.raises(ValueError):
+        _assert_safe_email("s", "<p>cvv</p>")  # règle par défaut (commandes, newsletter) inchangée
+
+
+def test_concurrent_workers_claim_once():
+    t = datetime.now(timezone.utc).isoformat()
+    ids = [f"conc-{uuid.uuid4().hex[:8]}" for _ in range(5)]
+    mdb.contact_messages.insert_many([{"id": i, "name": "C", "email": f"{i}@{DOMAIN}", "subject": "", "message": "m",
+                                       "created_at": t, "status": "new", "replies": [],
+                                       "owner_notification": {"status": "pending", "attempts": 0, "next_at": t},
+                                       "confirmation": {"status": "pending", "attempts": 0, "next_at": t}} for i in ids])
+    import subprocess
+    code = (
+        "import asyncio,sys; sys.path.insert(0,'/app/backend')\n"
+        "from dotenv import load_dotenv; load_dotenv('/app/backend/.env')\n"
+        "import contact_admin as c\n"
+        "calls=[]\n"
+        "orig=c._deliver_job\n"
+        "async def spy(k,m):\n    calls.append((m['id'],k)); await asyncio.sleep(0.2); return await orig(k,m)\n"
+        "c._deliver_job=spy\n"
+        f"ids={ids!r}\n"
+        "async def main():\n    await asyncio.gather(*[c.process_message(i) for i in ids for _ in range(4)], c.worker_tick(), c.worker_tick())\n"
+        "asyncio.run(main()); print(len(calls))\n")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert int(out.stdout.strip().splitlines()[-1]) <= 10
+    for i in ids:
+        m = get(i)
+        for k in ("owner_notification", "confirmation"):
+            assert m[k]["status"] == "sent" and m[k]["attempts"] == 1
 
 
 def test_provider_refusal_not_sent(h):

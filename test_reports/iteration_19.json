@@ -1,0 +1,44 @@
+{
+  "summary": "Frontend E2E test of contact messaging v2 (public /contact desktop+mobile, /confidentialite, admin Messages panel: notification statuses, CVV filter fallback, [SIMULER-ECHEC] auto-retry, uncertain retry with confirm(), legacy consent history, replies (success / temporary failure + retry linking / security-filter refusal), double-click idempotency, handled/new toggles, SUPPRIMER delete, 390px overflow). Every requested feature works. No functional bugs. A few minor edge cases are listed below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "contact_admin._deliver_job (owner_notification / confirmation fallback)", "issue": "The fallback emails that drop the subject and content for the security filter still include the client's name and email. If the NAME contains a filter word (my first test used name 'TEST_UI cvv'), both the admin notification and the client confirmation end in a permanent 'Échec · refusé par le filtre de sécurité' with no retry. The full message is still visible in the dashboard. Rare edge case. Option: if the name also triggers the filter, send a minimal notification without the name."},
+      {"endpoint": "_fail_detail", "issue": "Cosmetic: the error toast has doubled punctuation: '... (Échec simulé (fournisseur indisponible).). Vous pourrez réessayer.'"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified": [
+    "/contact at 1920 and 390: 0 contact-followup-consent elements, 0 checkboxes. contact-privacy-notice sits below the submit button and starts with the exact required text. contact-privacy-link goes to /confidentialite. Submitting shows contact-success. No horizontal overflow (scrollWidth equals viewport width).",
+    "/confidentialite: the 'Formulaire de contact' line mentions 'mesures précontractuelles' and 'intérêt légitime'.",
+    "Admin: dry-run banner shown. New message: owner_notification and confirmation both show 'Envoyée (simulation) · date'.",
+    "CVV in subject and message (neutral name): both show 'Envoyée (simulation) · contenu non inclus (filtre de sécurité)'. message-body shows the full text with CVV.",
+    "[SIMULER-ECHEC] message: admin notification shows 'En attente · nouvel essai automatique prévu' with no retry button, while the confirmation shows 'Envoyée (simulation)'. The worker automatic retry reached attempts=2.",
+    "Uncertain notification: shows 'Incertain · interrompu sans confirmation du fournisseur' with Réessayer. Clicking opens a confirm() with the duplicate warning; accepting changes it to 'Envoyée (simulation)' and the button disappears.",
+    "Legacy doc (followup_consent:false): message-legacy-consent shows 'Ancien formulaire : case de suivi non cochée (historique conservé)'. No notifications block. Reply works and the badge becomes 'Réponse envoyée'.",
+    "Reply box: no consent block and no checkbox. Double-clicking reply-send created exactly 1 reply, shown as 'Envoyée (simulation)' with badge 'Réponse envoyée'.",
+    "Reply with [SIMULER-ECHEC]: error toast appears and history shows 'Échec' with error text and message-reply-retry-{id}. Retry links correctly: the old entry shows 'renvoyée ensuite' with no retry button and the new entry shows 'nouvel essai'. In simulation the retry fails again because the marker stays in the body (same as the backend test). After I fixed the body in Mongo, the retry gave 'Envoyée (simulation) · nouvel essai'.",
+    "Reply containing 'cvv': toast mentions 'filtre de sécurité' and advises rephrasing. History shows 'Échec' with NO retry button. A following normal reply succeeds.",
+    "Marquer comme traité gives 'Traité'; Remettre en nouveau gives 'Nouveau'. On a message that already has a reply, it goes back to 'Réponse envoyée'. Delete: the submit button is disabled until SUPPRIMER is typed; then the toast appears and the card is removed.",
+    "390px admin Messages list: no element extends past the viewport (scrollWidth 390)."
+  ],
+  "test_report_links": ["/app/tests/seed_contact_ui.py"],
+  "action_items": [
+    "Optional: handle a client name that triggers the security filter in the notification and confirmation fallbacks.",
+    "Optional: fix the doubled punctuation in the reply failure toast."
+  ],
+  "critical_code_review_comments": [
+    "With the [SIMULER-ECHEC] marker, a reply retry in simulation can never succeed because the body is the same. This is expected, but a one-shot marker would allow testing a successful retry from the UI.",
+    "Code is clean: RetryButton is guarded by canRetry, refused/refused_local replies cannot be retried, the request_id idempotency works, and the busy ref prevents double sends."
+  ],
+  "updated_files": ["/app/tests/seed_contact_ui.py"],
+  "success_rate": {"backend": "n/a (frontend only)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created 7 TEST_ messages (@contact-test.example.com): 3 through the public form, 2 through the API, 2 inserted into Mongo (uncertain, legacy). All were deleted by id (1 through the UI delete, 6 through Mongo). I did not touch the real lamaisondauben@gmail.com message; its reply dated 13:42 was there before my run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin login: /admin form (admin-email-input/admin-password-input/admin-login-submit), then admin-tab-messages. Public contact is rate-limited to 5 per minute per IP. Use the Playwright page.on('dialog', async_handler) to accept the confirm() for uncertain retries. To test a successful reply retry, change the failed reply's body in Mongo first."
+}

@@ -71,7 +71,7 @@ def _layout(tagline: str, inner: str) -> str:
 
 
 def owner_notification_html(m: dict, with_content: bool = True) -> str:
-    rows = [("Nom", m["name"]), ("E-mail", m["email"])]
+    rows = [("Nom", m["name"]), ("E-mail", m["email"])] if with_content else [("E-mail", m["email"])]
     if with_content:
         rows.append(("Sujet", m.get("subject") or "(sans objet)"))
     rows.append(("Reçu le", fr_date(m["created_at"])))
@@ -80,7 +80,7 @@ def owner_notification_html(m: dict, with_content: bool = True) -> str:
     body = (f'<div style="background:#F2EDE4;border-radius:12px;padding:16px 18px;margin:18px 0">{_text(m["message"])}</div>'
             if with_content else
             '<p style="background:#FCEFD9;border-radius:12px;padding:14px 16px;margin:18px 0;color:#8A5A12">'
-            'Le sujet et le contenu de ce message n\'ont pas pu être inclus dans cet e-mail (filtre de sécurité). '
+            'Le nom, le sujet et le contenu de ce message n\'ont pas pu être inclus dans cet e-mail (filtre de sécurité). '
             'Ils sont conservés intégralement dans le tableau de bord.</p>')
     return _layout("Nouveau message", (
         '<h1 style="color:#1E3A2B;font-size:20px;margin:0 0 14px">Nouveau message reçu</h1>'
@@ -94,7 +94,7 @@ def confirmation_html(m: dict, with_subject: bool = True) -> str:
     subj = (f'<p>Objet de votre demande : <strong>{_text(m["subject"])}</strong></p>'
             if with_subject and m.get("subject") else "")
     return _layout("L'aubaine pour mieux s'organiser.", (
-        f'<h1 style="color:#1E3A2B;font-size:20px;margin:0 0 14px">Merci pour votre message, {_text(m["name"])}</h1>'
+        f'<h1 style="color:#1E3A2B;font-size:20px;margin:0 0 14px">Merci pour votre message{", " + _text(m["name"]) if with_subject else ""}</h1>'
         f'<p>Nous avons bien reçu votre message le {fr_date(m["created_at"])}.</p>{subj}'
         '<p>L\'équipe de La Maison d\'Auben va l\'étudier et vous répondra par e-mail à cette adresse.</p>'
         '<p style="color:#626D66;font-size:13px">Vous recevez cet e-mail parce que vous nous avez écrit via le formulaire '
@@ -148,7 +148,7 @@ async def _deliver_job(kind: str, m: dict) -> dict:
         return r
     subject = "Nous avons bien reçu votre message — La Maison d'Auben"
     r = await deliver(to=m["email"], subject=subject, html=confirmation_html(m), reply_to=owner)
-    if r.get("kind") == "refused_local" and m.get("subject"):
+    if r.get("kind") == "refused_local":
         r2 = await deliver(to=m["email"], subject=subject, html=confirmation_html(m, with_subject=False), reply_to=owner)
         return {**r2, "content_omitted": True, "first_error": r["error"]} if r2.get("id") else r2
     return r
@@ -269,7 +269,7 @@ def _fail_detail(r: dict) -> str:
     hint = {"temporary": " Vous pourrez réessayer.",
             "refused": " Le fournisseur a refusé cet e-mail.",
             "refused_local": " Reformulez la réponse (évitez notamment les demandes de mot de passe, de code ou de données bancaires, et les liens non https)."}
-    return f"La réponse n'a pas été envoyée : {ERR_LABEL[r['kind']]} ({r['error']}).{hint[r['kind']]}"
+    return f"La réponse n'a pas été envoyée : {ERR_LABEL[r['kind']]} ({r['error'].rstrip('.')}).{hint[r['kind']]}"
 
 
 async def _send_reply(m: dict, subject: str, body: str, request_id: str, retry_of: str = None) -> dict:

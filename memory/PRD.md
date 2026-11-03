@@ -181,3 +181,13 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - CONTACT_EMAIL_DRY_RUN="true" dans backend/.env Preview, actif seulement si PUBLIC_BASE_URL est un domaine preview ; marqueur [SIMULER-ECHEC] = échec simulé.
 - Front : Contact.jsx (case facultative), admin/MessagesPanel.jsx (extrait d'AdminDashboard).
 - Tests : backend/tests/test_contact_messages.py 10 passed (-n 0, via localhost avec X-Forwarded-For varié) ; iteration_18 frontend 8/8 ; 1 vrai e-mail d'essai (modèle réponse) envoyé à OWNER_EMAIL.
+
+## 2026-11 — Messagerie contact v2 (Preview uniquement, non publié)
+- Case de consentement supprimée ; mention d'information sous le bouton (notice_version contact-mention-v1). Politique de confidentialité (legal.js) : base légale mesures précontractuelles / intérêt légitime.
+- Tous les messages sont répondables ; anciens champs followup_consent* conservés, affichés « Ancien formulaire ».
+- File persistante dans le document : owner_notification / confirmation {status pending|sending|sent|failed|uncertain, attempts, next_at, started_at}. Envoi lancé en tâche de fond + worker toutes les 20 s (start_contact_worker au startup). Erreur temporaire : 3 essais auto (60 s, 300 s).
+- CONTACT_SEND_TIMEOUT_SECONDS (défaut 300) : sending trop ancien -> uncertain ; renvoi manuel avec confirm_duplicate_risk.
+- emailer.send_email_result (classification temporary/refused/refused_local) ; send_email inchangé pour commandes/newsletter.
+- Filtre de sécurité : notification admin renvoyée sans nom/sujet/contenu ; confirmation sans nom/sujet ; réponse admin refusée -> message explicite, pas de renvoi.
+- Marqueurs simulation : [SIMULER-ECHEC], [SIMULER-REFUS], [SIMULER-LENT].
+- Tests : test_contact_messages.py 12 passed ; iteration_19 frontend 100 % ; essai réel vers lamaisondauben@gmail.com (notification + confirmation + réponse acceptées par le fournisseur) ; redémarrage pendant envoi vérifié.

@@ -87,8 +87,12 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} != real link host {real!r} (G3)")
 
 
-async def send_email(*, to: str, subject: str, html: str, reply_to: str = None):
-    _assert_safe_email(subject, html)
+async def send_email_result(*, to: str, subject: str, html: str, reply_to: str = None) -> dict:
+    """{"id"} si accepté, sinon {"kind": refused_local|refused|temporary, "error"}."""
+    try:
+        _assert_safe_email(subject, html)
+    except ValueError as e:
+        return {"id": None, "kind": "refused_local", "error": str(e)}
     payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
     if reply_to or EMAIL_REPLY_TO:
         payload["contact_email"] = reply_to or EMAIL_REPLY_TO
@@ -100,10 +104,21 @@ async def send_email(*, to: str, subject: str, html: str, reply_to: str = None):
                 json=payload,
             )
         resp.raise_for_status()
-        return resp.json().get("id")
+        eid = resp.json().get("id")
+        return {"id": eid} if eid else {"id": None, "kind": "temporary", "error": "Réponse du fournisseur sans identifiant."}
+    except httpx.HTTPStatusError as e:
+        code = e.response.status_code
+        logger.error(f"Email send error: HTTP {code} {e.response.text[:300]}")
+        kind = "temporary" if code in (408, 425, 429) or code >= 500 else "refused"
+        return {"id": None, "kind": kind, "error": f"HTTP {code} : {e.response.text[:200]}"}
     except Exception as e:
         logger.error(f"Email send error: {str(e)}")
-        return None
+        return {"id": None, "kind": "temporary", "error": type(e).__name__}
+
+
+async def send_email(*, to: str, subject: str, html: str, reply_to: str = None):
+    _assert_safe_email(subject, html)
+    return (await send_email_result(to=to, subject=subject, html=html, reply_to=reply_to)).get("id")
 
 
 def order_confirmation_html(*, product_name: str, amount: float, currency: str, download_url: str, order_id: str,

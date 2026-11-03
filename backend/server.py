@@ -22,8 +22,8 @@ from order_guard import order_deletion_blockers
 from product_rules import (DEFAULT_CURRENCY, commercial_issues, derive_lookup, effective_currency,
                            effective_lookup, lookup_owners, valid_lookup)
 from content_admin import router as content_router
-from contact_admin import (router as contact_router, notify_new_message,
-                           CONSENT_TEXT as CONTACT_CONSENT_TEXT, CONSENT_VERSION as CONTACT_CONSENT_VERSION)
+from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
+                           start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
@@ -170,7 +170,6 @@ class ContactInput(BaseModel):
     email: EmailStr = Field(max_length=254)
     subject: str = Field("", max_length=200)
     message: str = Field(min_length=1, max_length=5000)
-    followup_consent: StrictBool = False
 
     @field_validator("name", "message")
     @classmethod
@@ -367,18 +366,12 @@ async def unsubscribe_newsletter(request: Request, inp: UnsubscribeInput):
 @api.post("/contact")
 async def contact(request: Request, inp: ContactInput):
     check_rate(request, "contact", 5)
-    created = now_iso()
     m = {"id": str(uuid.uuid4()), "name": inp.name, "email": inp.email.lower(),
-         "subject": inp.subject.strip(), "message": inp.message, "created_at": created, "status": "new",
-         "followup_consent": inp.followup_consent, "replies": []}
-    if inp.followup_consent:
-        m.update(followup_consent_at=created, followup_consent_text=CONTACT_CONSENT_TEXT,
-                 followup_consent_version=CONTACT_CONSENT_VERSION)
-    await db.contact_messages.insert_one(dict(m))
-    try:
-        await notify_new_message(m)
-    except Exception as e:
-        logger.error(f"Contact {m['id']} : notifications non envoyées ({e})")
+         "subject": inp.subject.strip(), "message": inp.message, "created_at": now_iso(), "status": "new",
+         "notice_version": CONTACT_NOTICE_VERSION, "replies": [],
+         "owner_notification": contact_job(), "confirmation": contact_job()}
+    await db.contact_messages.insert_one(m)
+    schedule_contact(m["id"])
     return {"status": "ok", "message": "Message envoyé. Nous vous répondrons rapidement."}
 
 
@@ -1124,6 +1117,7 @@ async def startup():
         await db.articles.update_many({"cover_image": old}, {"$set": {"cover_image": new}})
     await ensure_stripe_catalog()
     await mark_interrupted_campaigns()
+    start_contact_worker()
     logger.info("Startup complete")
 
 

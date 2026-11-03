@@ -61,6 +61,8 @@ export const adminMessages = () => api.get("/admin/messages").then((r) => r.data
 export const adminMessagesEmailMode = () => api.get("/admin/messages/email-mode").then((r) => r.data);
 export const adminReplyMessage = (id, payload) => api.post(`/admin/messages/${id}/reply`, payload).then((r) => r.data);
 export const adminSetMessageStatus = (id, status) => api.post(`/admin/messages/${id}/status`, { status }).then((r) => r.data);
+export const adminRetryReply = (id, replyId, payload) => api.post(`/admin/messages/${id}/replies/${replyId}/retry`, payload).then((r) => r.data);
+export const adminRetryNotification = (id, kind, payload) => api.post(`/admin/messages/${id}/notifications/${kind}/retry`, payload).then((r) => r.data);
 export const adminSaveProduct = (slug, payload) =>
   (slug ? api.put(`/admin/products/${slug}`, payload) : api.post("/admin/products", payload)).then((r) => r.data);
 export const adminUploadProductFile = (slug, formData) =>

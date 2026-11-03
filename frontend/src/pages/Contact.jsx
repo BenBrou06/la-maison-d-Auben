@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Mail, Send, MessageCircle } from "lucide-react";
 import { Seo } from "@/components/Seo";
@@ -60,6 +61,9 @@ export default function Contact() {
               <button type="submit" disabled={loading} data-testid="contact-submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-6 py-3.5 font-medium text-[#FAF8F5] transition-all hover:bg-[#3B6B4C] disabled:opacity-70">
                 {loading ? "Envoi…" : <>{c.submit_label} <Send className="h-4 w-4" /></>}
               </button>
+              <p className="text-xs leading-relaxed text-[#626D66]" data-testid="contact-privacy-notice">
+                En envoyant ce formulaire, vous demandez à La Maison d'Auben de traiter votre demande et de vous répondre à l'adresse email indiquée. Vos coordonnées seront utilisées uniquement pour gérer cet échange, et non pour vous adresser des communications commerciales. Consultez notre <Link to="/confidentialite" className="underline hover:text-[#1E3A2B]" data-testid="contact-privacy-link">politique de confidentialité</Link> pour en savoir plus sur le traitement de vos données personnelles.
+              </p>
             </form>
           )}
         </Reveal>

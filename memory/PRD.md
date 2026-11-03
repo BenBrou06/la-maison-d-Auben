@@ -175,3 +175,20 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - À signaler : la synchro Stripe existante au démarrage (ensure_stripe_catalog) et au checkout crée/aligne toujours les prix automatiquement (comportement antérieur, non modifié).
 - 2026-06 : correction APPLIQUÉE en Preview (5 fiches, avant/après : seuls lookup_key+currency ajoutés ; 2e exécution 0 changement ; tests 23/23). Simulation Production en lecture seule (deployer, plan() sur docs réels) : 5 à compléter, 0 ignorés, aucune collision ; suivi-sportif 5,99 € fichier Suivi-Sport.xlsx. Stripe LIVE non lu directement par le deployer. Production NON modifiée.
 - 2026-06 : CORRECTION PRODUCTION APPLIQUÉE (accord explicite) via PUT /api/admin/products/{slug} {lookup_key,currency} sur les 5 fiches ; aucun appel Stripe ; diff BEFORE/AFTER (memory/prod_products_BEFORE_fix.md / _AFTER_fix.md) : exactement 10 champs ajoutés, 0 modifié/supprimé, budget-mensuel identique, suivi-sportif 5,99 €. Secrets PROD_ADMIN_EMAIL/PASSWORD ajoutés en Preview pour l'opération : à supprimer + changer le mot de passe admin Prod.
+
+## 2026-11 — Messagerie contact (Preview uniquement, non publié)
+- backend/contact_admin.py : consentement par demande (contact-suivi-v1, horodaté), notification OWNER_EMAIL systématique, confirmation + réponses seulement si consentement, reply_to = OWNER_EMAIL, historique `replies` (status sending/sent/failed, email_id), anti-doublon request_id atomique, statut new/answered/handled, 424 en échec d'envoi.
+- CONTACT_EMAIL_DRY_RUN="true" dans backend/.env Preview, actif seulement si PUBLIC_BASE_URL est un domaine preview ; marqueur [SIMULER-ECHEC] = échec simulé.
+- Front : Contact.jsx (case facultative), admin/MessagesPanel.jsx (extrait d'AdminDashboard).
+- Tests : backend/tests/test_contact_messages.py 10 passed (-n 0, via localhost avec X-Forwarded-For varié) ; iteration_18 frontend 8/8 ; 1 vrai e-mail d'essai (modèle réponse) envoyé à OWNER_EMAIL.
+
+## 2026-11 — Messagerie contact v2 (Preview uniquement, non publié)
+- Case de consentement supprimée ; mention d'information sous le bouton (notice_version contact-mention-v1). Politique de confidentialité (legal.js) : base légale mesures précontractuelles / intérêt légitime.
+- Tous les messages sont répondables ; anciens champs followup_consent* conservés, affichés « Ancien formulaire ».
+- File persistante dans le document : owner_notification / confirmation {status pending|sending|sent|failed|uncertain, attempts, next_at, started_at}. Envoi lancé en tâche de fond + worker toutes les 20 s (start_contact_worker au startup). Erreur temporaire : 3 essais auto (60 s, 300 s).
+- CONTACT_SEND_TIMEOUT_SECONDS (défaut 300) : sending trop ancien -> uncertain ; renvoi manuel avec confirm_duplicate_risk.
+- emailer.send_email_result (classification temporary/refused/refused_local) ; send_email inchangé pour commandes/newsletter.
+- Filtre de sécurité : notification admin renvoyée sans nom/sujet/contenu ; confirmation sans nom/sujet ; réponse admin refusée -> message explicite, pas de renvoi.
+- Marqueurs simulation : [SIMULER-ECHEC], [SIMULER-REFUS], [SIMULER-LENT].
+- Tests : test_contact_messages.py 12 passed ; iteration_19 frontend 100 % ; essai réel vers lamaisondauben@gmail.com (notification + confirmation + réponse acceptées par le fournisseur) ; redémarrage pendant envoi vérifié.
+- 2026-11 (v2.1) : filtre contextuel pour la messagerie (emailer.contextual_sensitive_issue, `_assert_safe_email(..., contextual=True)` utilisé uniquement par contact_admin) : termes seuls (cvv, seed/recovery phrase, social security number) non bloquants ; bloque demandes d'identifiants FR/EN (hors négation), CVV avec chiffres, n° de carte valide (Luhn). Règle par défaut (commandes/newsletter) inchangée. Tests contact 15 passed (dont concurrence : attempts == 1) ; redémarrage : file en base reprise, incertain jamais relancé automatiquement.

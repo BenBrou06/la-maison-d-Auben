@@ -58,6 +58,9 @@ export const adminNewsletterPreview = (payload) => api.post("/admin/newsletter/p
 export const adminNewsletterTest = (payload) => api.post("/admin/newsletter/test", payload).then((r) => r.data);
 export const adminNewsletterSend = (payload) => api.post("/admin/newsletter/send", payload).then((r) => r.data);
 export const adminMessages = () => api.get("/admin/messages").then((r) => r.data);
+export const adminMessagesEmailMode = () => api.get("/admin/messages/email-mode").then((r) => r.data);
+export const adminReplyMessage = (id, payload) => api.post(`/admin/messages/${id}/reply`, payload).then((r) => r.data);
+export const adminSetMessageStatus = (id, status) => api.post(`/admin/messages/${id}/status`, { status }).then((r) => r.data);
 export const adminSaveProduct = (slug, payload) =>
   (slug ? api.put(`/admin/products/${slug}`, payload) : api.post("/admin/products", payload)).then((r) => r.data);
 export const adminUploadProductFile = (slug, formData) =>

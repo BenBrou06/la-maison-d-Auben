@@ -7,7 +7,7 @@ import { sendContact } from "@/lib/api";
 import { useContent } from "@/lib/content";
 
 export default function Contact() {
-  const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
+  const [form, setForm] = useState({ name: "", email: "", subject: "", message: "", followup_consent: false });
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const c = useContent("contact");
@@ -57,6 +57,10 @@ export default function Contact() {
               </div>
               <input maxLength={200} placeholder="Sujet" aria-label="Sujet" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className={field} data-testid="contact-subject" />
               <textarea required maxLength={5000} rows={5} placeholder="Votre message" aria-label="Votre message" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className={field} data-testid="contact-message" />
+              <label className="flex cursor-pointer items-start gap-3 text-sm text-[#2C332E]" data-testid="contact-followup-label">
+                <input type="checkbox" checked={form.followup_consent} onChange={(e) => setForm({ ...form, followup_consent: e.target.checked })} className="mt-0.5 h-4 w-4 shrink-0 accent-[#1E3A2B]" data-testid="contact-followup-consent" />
+                <span>Je souhaite recevoir par email une confirmation de mon message ainsi que les réponses et le suivi de cette demande. <span className="text-[#626D66]">(facultatif — sans lien avec la newsletter)</span></span>
+              </label>
               <button type="submit" disabled={loading} data-testid="contact-submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-6 py-3.5 font-medium text-[#FAF8F5] transition-all hover:bg-[#3B6B4C] disabled:opacity-70">
                 {loading ? "Envoi…" : <>{c.submit_label} <Send className="h-4 w-4" /></>}
               </button>

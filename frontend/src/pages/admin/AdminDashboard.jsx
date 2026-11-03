@@ -7,13 +7,14 @@ import { Logo } from "@/components/Logo";
 import { Seo } from "@/components/Seo";
 import ContentPanel from "@/pages/admin/ContentPanel";
 import NewsletterPanel from "@/pages/admin/NewsletterPanel";
+import MessagesPanel from "@/pages/admin/MessagesPanel";
 import SitePagesPanel from "@/pages/admin/site/SitePagesPanel";
 import ArticlesPanel from "@/pages/admin/site/ArticlesPanel";
 import FaqPanel from "@/pages/admin/site/FaqPanel";
 import { confirmLeave } from "@/pages/admin/site/editTracking";
 import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import {
-  adminMe, adminOrders, adminMessages, getProducts, adminDeleteMessage, adminDeleteOrder,
+  adminMe, adminOrders, getProducts, adminDeleteOrder,
   adminUploadProductFile, adminDeleteProductFile, adminUpdateProduct, adminProductsHealth, adminProductStripeSync, api,
 } from "@/lib/api";
 import { formatPrice } from "@/lib/i18n";
@@ -320,45 +321,3 @@ function OrdersPanel() {
   );
 }
 
-function MessagesPanel() {
-  const qc = useQueryClient();
-  const { data: msgs = [] } = useQuery({ queryKey: ["admin-messages"], queryFn: adminMessages });
-  const [toDelete, setToDelete] = useState(null);
-  const del = async (word) => {
-    try {
-      await adminDeleteMessage(toDelete.id, word);
-      toast.success("Message supprimé définitivement.");
-      qc.invalidateQueries({ queryKey: ["admin-messages"] });
-    } catch (e) { toast.error(e.response?.data?.detail || "Suppression impossible."); }
-    setToDelete(null);
-  };
-  return (
-    <Panel title={`Messages (${msgs.length})`}>
-      {msgs.length === 0 ? <p className="text-sm text-[#626D66]">Aucun message pour le moment.</p> : (
-        <div className="space-y-3" data-testid="admin-messages-list">
-          {msgs.map((m) => (
-            <div key={m.id} className="rounded-xl border border-[#E2DDD5] bg-white p-4" data-testid={`admin-message-${m.id}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium text-[#1E3A2B] [overflow-wrap:anywhere]">{m.name} <span className="text-sm font-normal text-[#626D66]">· {m.email}</span></p>
-                <span className="flex items-center gap-3 text-xs text-[#626D66]">
-                  {new Date(m.created_at).toLocaleDateString("fr-FR")}
-                  <button onClick={() => setToDelete(m)} className="inline-flex items-center gap-1 text-[#8A2A1F] hover:underline" data-testid={`message-delete-btn-${m.id}`}>
-                    <Trash2 className="h-3.5 w-3.5" /> Supprimer
-                  </button>
-                </span>
-              </div>
-              {m.subject && <p className="mt-1 text-sm font-medium text-[#3B6B4C]">{m.subject}</p>}
-              <p className="mt-1 text-sm text-[#2C332E]">{m.message}</p>
-            </div>
-          ))}
-        </div>
-      )}
-      <ConfirmDeleteDialog
-        open={!!toDelete} testid="delete-message"
-        title="Supprimer ce message ?"
-        description={`Message de ${toDelete?.name || ""} (${toDelete?.email || ""}). Les autres messages ne sont pas touchés.`}
-        onCancel={() => setToDelete(null)} onConfirm={del}
-      />
-    </Panel>
-  );
-}

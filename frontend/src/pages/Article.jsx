@@ -7,7 +7,7 @@ import { SITE_URL, absUrl } from "@/lib/site";
 import { Reveal } from "@/components/Reveal";
 import { ProductCard } from "@/components/ProductCard";
 import { getArticle, getCategories, mediaUrl } from "@/lib/api";
-import { useContent } from "@/lib/content";
+import { useContent, RichText } from "@/lib/content";
 
 export default function Article() {
   const { slug } = useParams();
@@ -63,7 +63,7 @@ export default function Article() {
         <div className="prose mt-10 max-w-none">
           {(article.content || []).map((block, i) => {
             if (block.type === "h2") return <h2 key={i} className="mt-8 font-serif text-2xl font-semibold text-[#1E3A2B]">{block.text}</h2>;
-            return <p key={i} className="mt-4 text-lg leading-relaxed text-[#2C332E]">{block.text}</p>;
+            return <RichText key={i} body={block.text} pClass="mt-4 text-lg leading-relaxed text-[#2C332E]" ulClass="mt-4 list-disc space-y-1.5 pl-5 text-lg leading-relaxed text-[#2C332E]" liClass="leading-relaxed" />;
           })}
         </div>
 

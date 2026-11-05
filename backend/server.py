@@ -21,7 +21,7 @@ from newsletter_admin import (router as newsletter_router, mark_interrupted_camp
 from order_guard import order_deletion_blockers
 from product_rules import (DEFAULT_CURRENCY, commercial_issues, derive_lookup, effective_currency,
                            effective_lookup, lookup_owners, valid_lookup)
-from content_admin import router as content_router
+from content_admin import router as content_router, ordered_articles
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
@@ -299,8 +299,7 @@ async def get_articles(category: Optional[str] = None):
     query = {"published": {"$ne": False}}
     if category:
         query["category"] = category
-    items = await db.articles.find(query, {"_id": 0}).sort("published_at", -1).to_list(200)
-    return items
+    return ordered_articles(await db.articles.find(query, {"_id": 0}).to_list(200))
 
 
 @api.get("/articles/{slug}")

@@ -90,7 +90,7 @@ class TestCheckoutWaiver:
 
     def test_valid_checkout_stores_consent(self, s, created_sessions):
         import stripe
-        stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
+        stripe.api_key = __import__("stripe_keys").select_stripe_keys(os.environ)["secret"]
         r = s.post(f"{API}/payments/checkout", json={"lookup_key": "budget_mensuel", "origin_url": "https://evil.example.com",
                                                       "withdrawal_waiver": True, "withdrawal_consent_version": WVER},
                    headers={"User-Agent": "QA-Agent/1.0"})

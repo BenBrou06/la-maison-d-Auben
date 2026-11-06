@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Save, ExternalLink, Trash2 } from "lucide-react";
-import { adminArticles, adminCreateArticle, adminUpdateArticle, adminDeleteArticle, getProducts } from "@/lib/api";
+import { Plus, Save, ExternalLink, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { adminArticles, adminCreateArticle, adminUpdateArticle, adminDeleteArticle, adminReorderArticles, getProducts } from "@/lib/api";
 import { ImageInput, ListEditor, inputCls, primaryCls, btnCls } from "@/pages/admin/site/fields";
 import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import { useEditSession, EditModeBar, SaveButtons, Modified, Restore, PendingBadge, CONFIRM_DISCARD } from "@/pages/admin/site/editTracking";
@@ -149,6 +149,25 @@ export default function ArticlesPanel() {
     ["admin-articles", "articles", "article"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     setSel(slug);
   };
+  const [moving, setMoving] = useState(false);
+  const move = async (i, dir) => {
+    const j = i + dir;
+    if (moving || j < 0 || j >= articles.length) return;
+    if (!sel && current) setSel(current.slug);
+    const next = [...articles];
+    [next[i], next[j]] = [next[j], next[i]];
+    qc.setQueryData(["admin-articles"], next);
+    setMoving(true);
+    try {
+      qc.setQueryData(["admin-articles"], await adminReorderArticles(next.map((a) => a.slug)));
+      toast.success("Ordre enregistré.");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "L'ordre n'a pas pu être enregistré.");
+    } finally {
+      setMoving(false);
+      ["admin-articles", "articles"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    }
+  };
   const onDeleted = (slug) => {
     qc.setQueryData(["admin-articles"], (list = []) => list.filter((a) => a.slug !== slug));
     ["admin-articles", "articles", "article"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -158,14 +177,25 @@ export default function ArticlesPanel() {
     <div className="grid gap-6 lg:grid-cols-[280px_1fr]" data-testid="articles-admin-panel">
       <div className="card-soft h-fit space-y-1 p-3">
         <button onClick={() => pick("new")} className={`${btnCls} mb-2 w-full justify-center`} data-testid="article-new-btn"><Plus className="h-3.5 w-3.5" /> Nouvel article</button>
-        {articles.map((a) => (
-          <button key={a.slug} onClick={() => pick(a.slug)} data-testid={`article-item-${a.slug}`}
-            className={`block w-full rounded-lg px-3 py-2 text-left text-sm ${current?.slug === a.slug && sel !== "new" ? "bg-[#1E3A2B] text-[#FAF8F5]" : "text-[#2C332E] hover:bg-[#FAF8F5]"}`}>
-            {a.title}
-            <span className="block text-[10px] opacity-70">{a.published === false ? "Brouillon (non publié)" : "Publié"}</span>
-            {current?.slug === a.slug && sel !== "new" && <PendingBadge n={pending} testid={`article-pending-${a.slug}`} />}
-          </button>
-        ))}
+        {articles.length > 1 && <p className="px-1 pb-1 text-[10px] text-[#626D66]" data-testid="articles-order-hint">Ordre d'affichage sur la page Ressources : le premier est mis en avant.</p>}
+        {articles.map((a, i) => {
+          const active = current?.slug === a.slug && sel !== "new";
+          return (
+            <div key={a.slug} className={`flex items-stretch gap-1 rounded-lg ${active ? "bg-[#1E3A2B] text-[#FAF8F5]" : "text-[#2C332E] hover:bg-[#FAF8F5]"}`} data-testid={`article-row-${a.slug}`}>
+              <button onClick={() => pick(a.slug)} data-testid={`article-item-${a.slug}`} className="block min-w-0 flex-1 px-3 py-2 text-left text-sm">
+                {a.title}
+                <span className="block text-[10px] opacity-70">{i === 0 && a.published !== false ? "Mis en avant · " : ""}{a.published === false ? "Brouillon (non publié)" : "Publié"}</span>
+                {active && <PendingBadge n={pending} testid={`article-pending-${a.slug}`} />}
+              </button>
+              {articles.length > 1 && (
+                <span className="flex flex-col justify-center pr-1">
+                  <button onClick={() => move(i, -1)} disabled={moving || i === 0} aria-label={`Monter « ${a.title} »`} className="rounded p-0.5 opacity-70 hover:opacity-100 disabled:opacity-20" data-testid={`article-move-up-${a.slug}`}><ChevronUp className="h-4 w-4" /></button>
+                  <button onClick={() => move(i, 1)} disabled={moving || i === articles.length - 1} aria-label={`Descendre « ${a.title} »`} className="rounded p-0.5 opacity-70 hover:opacity-100 disabled:opacity-20" data-testid={`article-move-down-${a.slug}`}><ChevronDown className="h-4 w-4" /></button>
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="card-soft p-6">
         <h2 className="mb-5 font-serif text-xl font-semibold text-[#1E3A2B]">{sel === "new" ? "Nouvel article" : current?.title}</h2>

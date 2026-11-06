@@ -145,9 +145,39 @@ async def _validated(inp: ArticleInput, current_slug: Optional[str] = None) -> d
     return data
 
 
+def ordered_articles(items: list) -> list:
+    """Ordre manuel (`position`) ; les articles sans position suivent, du plus récent au plus ancien."""
+    items = sorted(items, key=lambda a: a.get("published_at") or "", reverse=True)
+    return sorted(items, key=lambda a: (a.get("position") is None, a.get("position") or 0))
+
+
+async def _materialize_positions() -> int:
+    """Fige l'ordre affiché actuel en positions 1..n (sans rien changer si toutes sont déjà définies)."""
+    items = ordered_articles(await db.articles.find({}, {"_id": 0, "slug": 1, "position": 1, "published_at": 1}).to_list(500))
+    if all(a.get("position") is not None for a in items):
+        return max((a["position"] for a in items), default=0)
+    for i, a in enumerate(items, 1):
+        await db.articles.update_one({"slug": a["slug"]}, {"$set": {"position": i}})
+    return len(items)
+
+
+class ReorderInput(BaseModel):
+    slugs: List[str] = Field(max_length=500)
+
+
 @router.get("/admin/articles")
 async def admin_articles(admin=Depends(get_current_admin)):
-    return await db.articles.find({}, {"_id": 0}).sort("published_at", -1).to_list(500)
+    return ordered_articles(await db.articles.find({}, {"_id": 0}).to_list(500))
+
+
+@router.post("/admin/articles/reorder")
+async def reorder_articles(inp: ReorderInput, admin=Depends(get_current_admin)):
+    existing = {a["slug"] for a in await db.articles.find({}, {"_id": 0, "slug": 1}).to_list(500)}
+    if len(inp.slugs) != len(set(inp.slugs)) or set(inp.slugs) != existing:
+        raise HTTPException(409, "La liste des articles a changé entre-temps : actualisez la page puis recommencez.")
+    for i, slug in enumerate(inp.slugs, 1):
+        await db.articles.update_one({"slug": slug}, {"$set": {"position": i}})
+    return ordered_articles(await db.articles.find({}, {"_id": 0}).to_list(500))
 
 
 @router.post("/admin/articles")
@@ -158,6 +188,7 @@ async def create_article(inp: ArticleInput, admin=Depends(get_current_admin)):
     doc = {"category": "", "excerpt": "", "cover_image": "", "read_time": 3, "content": [], "cta_text": "",
            "related_product_slugs": [], "published": False, "published_at": now_iso(), **data,
            "created_at": now_iso(), "updated_at": now_iso()}
+    doc["position"] = await _materialize_positions() + 1
     await db.articles.insert_one(doc)
     return await db.articles.find_one({"slug": doc["slug"]}, {"_id": 0})
 

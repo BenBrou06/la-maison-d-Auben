@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend E2E (Preview) for article manual ordering, article paragraph RichText rendering, and Stripe TEST checkout. Ordering: hint, rows, up/down testids, disabled states for the first and last rows, the 'Mis en avant' label, the immediate save with the 'Ordre enregistré.' toast, persistence after a reload and after logging out and back in, and the public /ressources featured card plus card order on desktop 1920 and mobile 390 all PASS. A new article is added at the end of the list. Deleting an article (dialog only enables Supprimer after typing SUPPRIMER) keeps the relative order of the others. A draft is never shown publicly (list and 404/'Article introuvable'), even when it is first in the admin list; the public featured card is then the first published article. RichText: single newline gives <br>, multiple blank lines collapse into one paragraph break, a [text](/boutique) link renders, a list placed after a blank line renders as <ul>, and h2 blocks are unchanged. One expectation from the brief is NOT met: 'Paragraphe 2\\n- point 1\\n- point 2' (no blank line before the dashes) renders as a <p> with <br> and literal '- point 1' / '- point 2', not as a bullet list. This is exactly how Pages behave (same toBlocks), so it is consistent with Pages, but it does not match the requested test expectation. The 3 existing article pages render normally (image loads, title, date, h2, paragraphs). The /boutique/suivi-sportif checkout goes to checkout.stripe.com with a cs_test_ session, a Sandbox badge and €4.99. No payment was made. The original order (budget, voiture, epargner) was restored and both test articles were deleted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Article paragraph rendering (shared RichText/toBlocks in frontend/src/lib/content.js)", "issue": "A block mixing a normal line with '- ' lines that follow directly (no blank line before them), e.g. 'Paragraphe 2\\n- point 1\\n- point 2', is treated as a plain paragraph: you get '- point 1' as text with <br>, and no <ul>. A list only renders if ALL lines of the blank-line-separated block start with '- '. Pages have the same behaviour (shared code), but the test brief expects a 2-item bullet list. If that is the desired behaviour, toBlocks must split a block when it switches between text lines and '- ' lines. That change would also affect Pages (About/Legal), which stays consistent with the 'same as Pages' requirement.", "affected_selectors": [".prose p", ".prose ul"]}
+    ],
+    "design_issues": [
+      {"screen": "Admin > Articles list", "issues": ["When a draft is first in the list, no row shows 'Mis en avant'. Publicly, the first PUBLISHED article is featured. The label could be shown on the first published row instead of only at index 0 (minor, only informational)."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Decide whether '- ' lines placed directly after a text line (no blank line) should become a bullet list. The brief's test case expects a list, but current RichText (shared with Pages) renders them as text lines with <br>. If yes, update toBlocks in lib/content.js to split mixed blocks into p + ul.",
+    "Optional: show 'Mis en avant' on the first published row instead of only at index 0 when a draft is first."
+  ],
+  "critical_code_review_comments": [
+    "ArticlesPanel.move(): optimistic update, then server response, then invalidate. The buttons are disabled while saving, so rapid clicks are serialized. OK.",
+    "ordered_articles: after the first reorder, positions are materialized 1..n. The order stayed identical to the previous default order.",
+    "Article.jsx h2 blocks with '\\n' render the newline collapsed (unchanged behaviour, as requested)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend only requested)", "frontend": "95% (1 expectation mismatch: list without a preceding blank line)"},
+  "seed_data_creation": "Created test-qa-rendu-paragraphes (via the admin UI) and test-qa-brouillon (draft, via the API). Both were deleted via the admin UI with SUPPRIMER. The article order was restored to comment-faire-son-budget-mensuel, combien-coute-reellement-une-voiture, comment-commencer-a-epargner. Positions are now materialized as 1..3 (previously null).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin articles testids: article-row/item/move-up/move-down-{slug}, articles-order-hint, article-new-btn, article-blocks-add, article-blocks-{i}-text/type, article-published-checkbox, article-save-btn, article-delete-btn, delete-article-input/submit. Public cards: a[data-testid=article-{slug}], featured has class rounded-3xl. Product buy: withdrawal-consent-checkbox + buy-now-btn. Stripe checkout shows a Sandbox badge; adaptive pricing shows USD by default in a headless US locale, with €4.99 as an option."
+}

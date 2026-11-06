@@ -103,8 +103,8 @@ def test_duplicate_blocks_checkout_and_health(h):
 def test_suivi_sportif_checkout_499():
     r = checkout("suivi_sportif")
     assert r.status_code == 200 and r.json()["checkout_url"].startswith("https://checkout.stripe.com/")
-    stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
-    assert stripe.api_key.startswith("sk_test")
+    stripe.api_key = __import__("stripe_keys").select_stripe_keys(os.environ)["secret"]
+    assert stripe.api_key.startswith(("sk_test", "rk_test"))
     s = stripe.checkout.Session.retrieve(r.json()["session_id"])
     assert s.amount_total == 499 and s.currency == "eur"
 

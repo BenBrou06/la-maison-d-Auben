@@ -21,7 +21,8 @@ from newsletter_admin import (router as newsletter_router, mark_interrupted_camp
 from order_guard import order_deletion_blockers
 from product_rules import (DEFAULT_CURRENCY, commercial_issues, derive_lookup, effective_currency,
                            effective_lookup, lookup_owners, valid_lookup)
-from content_admin import router as content_router
+from content_admin import router as content_router, ordered_articles
+from stripe_keys import select_stripe_keys, preflight_new_live, LIVE_ACCOUNT_ID
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
@@ -32,9 +33,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # --- Configuration Stripe (secrets uniquement via variables d'environnement) ---
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+_STRIPE = select_stripe_keys(os.environ)
+STRIPE_SECRET_KEY = _STRIPE["secret"]
 STRIPE_MODE = (os.environ.get("STRIPE_MODE") or "test").strip().lower()
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_WEBHOOK_SECRET = _STRIPE["webhook"]
 
 # Aucun fallback test : si la clé est absente, échec explicite (pas de mode Test silencieux).
 if not STRIPE_SECRET_KEY:
@@ -72,7 +74,19 @@ if STRIPE_MODE == "live" and not PUBLIC_BASE_URL.startswith("https://"):
     raise RuntimeError("CONFIG ERROR: PUBLIC_BASE_URL (https) est requise en production.")
 
 stripe.api_key = STRIPE_SECRET_KEY
-logger.info("Stripe initialisé | mode=%s | cle=%s", STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
+if _STRIPE["environment"] == "production" and _STRIPE["source"] == "NEW_STRIPE_*":
+    try:
+        _acct = stripe.Account.retrieve().id
+    except Exception as e:
+        _acct = None
+        logger.warning("Stripe : compte non vérifiable au démarrage (%s).", type(e).__name__)
+    if _acct and _acct != LIVE_ACCOUNT_ID:
+        raise RuntimeError("CONFIG ERROR (Stripe) : NEW_STRIPE_SECRET_KEY appartient à un autre compte que celui attendu. Refus de démarrer.")
+    logger.info("Stripe : compte LIVE %s", "vérifié" if _acct else "non vérifié")
+if _STRIPE["environment"] == "production" and _STRIPE["source"] == "STRIPE_*":
+    _pf = preflight_new_live(os.environ, STRIPE_WEBHOOK_SECRET, lambda k: stripe.Account.retrieve(api_key=k).id)
+    logger.info("Contrôle NEW_STRIPE_* LIVE (lecture seule) | " + " | ".join(f"{k}={'oui' if v is True else 'non' if v is False else v}" for k, v in _pf.items()))
+logger.info("Stripe initialisé | env=%s | source=%s | mode=%s | cle=%s", _STRIPE["environment"], _STRIPE["source"], STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
 
 DOWNLOAD_TTL_DAYS = 30
 DOWNLOAD_LIMIT = 25
@@ -299,8 +313,7 @@ async def get_articles(category: Optional[str] = None):
     query = {"published": {"$ne": False}}
     if category:
         query["category"] = category
-    items = await db.articles.find(query, {"_id": 0}).sort("published_at", -1).to_list(200)
-    return items
+    return ordered_articles(await db.articles.find(query, {"_id": 0}).to_list(200))
 
 
 @api.get("/articles/{slug}")
@@ -417,16 +430,34 @@ def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = 
         )
 
 
+def _startup_price_check(lookup_key: str, price: float, currency: str):
+    """Lecture seule : décrit l'écart éventuel entre le prix en base et le Price Stripe actif."""
+    prices = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data
+    if not prices:
+        return "aucun prix actif"
+    e0 = prices[0]
+    if e0.unit_amount != int(round(price * 100)) or e0.currency != currency or e0.tax_behavior != "inclusive":
+        return f"prix actif {e0.unit_amount} {e0.currency} ({e0.tax_behavior}) ≠ base {int(round(price * 100))} {currency} (inclusive)"
+    return None
+
+
 async def ensure_stripe_catalog():
     # Source de vérité = prix en base (édité via l'admin), jamais le prix du seed.
+    # Production : vérification en lecture seule au démarrage (aucune écriture Stripe LIVE).
+    read_only = _STRIPE["environment"] == "production"
     try:
         async for p in db.products.find({"price": {"$gt": 0},
                                          "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
             if commercial_issues(p) or len(await lookup_owners(db, lookup_of(p))) > 1:
                 logger.warning(f"Catalogue Stripe : {p['slug']} ignoré (fiche incomplète ou référence en double)")
                 continue
+            if read_only:
+                issue = _startup_price_check(lookup_of(p), p["price"], effective_currency(p, warn=True))
+                if issue:
+                    logger.warning(f"Catalogue Stripe (lecture seule) : écart pour {p['slug']} — {issue}. Aucune correction automatique au démarrage.")
+                continue
             sync_stripe_price(lookup_of(p), p["name"], p["price"], effective_currency(p, warn=True))
-        logger.info("Stripe catalog ensured")
+        logger.info("Stripe catalog checked (lecture seule)" if read_only else "Stripe catalog ensured")
     except Exception as e:
         logger.error(f"Stripe catalog setup failed: {e}")
 
@@ -661,6 +692,8 @@ async def order_by_session(session_id: str):
 async def stripe_webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(503, "Webhook non configuré")
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception:

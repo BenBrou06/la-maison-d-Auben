@@ -22,7 +22,7 @@ from order_guard import order_deletion_blockers
 from product_rules import (DEFAULT_CURRENCY, commercial_issues, derive_lookup, effective_currency,
                            effective_lookup, lookup_owners, valid_lookup)
 from content_admin import router as content_router, ordered_articles
-from stripe_keys import select_stripe_keys
+from stripe_keys import select_stripe_keys, LIVE_ACCOUNT_ID
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
@@ -74,6 +74,15 @@ if STRIPE_MODE == "live" and not PUBLIC_BASE_URL.startswith("https://"):
     raise RuntimeError("CONFIG ERROR: PUBLIC_BASE_URL (https) est requise en production.")
 
 stripe.api_key = STRIPE_SECRET_KEY
+if _STRIPE["environment"] == "production" and _STRIPE["source"] == "NEW_STRIPE_*":
+    try:
+        _acct = stripe.Account.retrieve().id
+    except Exception as e:
+        _acct = None
+        logger.warning("Stripe : compte non vérifiable au démarrage (%s).", type(e).__name__)
+    if _acct and _acct != LIVE_ACCOUNT_ID:
+        raise RuntimeError("CONFIG ERROR (Stripe) : NEW_STRIPE_SECRET_KEY appartient à un autre compte que celui attendu. Refus de démarrer.")
+    logger.info("Stripe : compte LIVE %s", "vérifié" if _acct else "non vérifié")
 logger.info("Stripe initialisé | env=%s | source=%s | mode=%s | cle=%s", _STRIPE["environment"], _STRIPE["source"], STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
 
 DOWNLOAD_TTL_DAYS = 30

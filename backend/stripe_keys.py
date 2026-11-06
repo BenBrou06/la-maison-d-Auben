@@ -2,6 +2,9 @@
 
 PREVIEW_URL = "https://auben-preview-shop.preview.emergentagent.com"
 PRODUCTION_URL = "https://la-maison-dauben.com"
+LIVE_ACCOUNT_ID = "acct_1UHr1vA7WGaTzlxD"
+# Source des clés en Production : "new" = NEW_STRIPE_* (valeurs Live) ; retour arrière : "emergent" = STRIPE_* gérées par Emergent.
+PRODUCTION_KEY_SOURCE = "emergent"
 
 
 def _fail(msg: str):
@@ -27,8 +30,17 @@ def select_stripe_keys(env) -> dict:
     if url == PRODUCTION_URL:
         if mode != "live":
             _fail("STRIPE_MODE doit valoir live sur l'adresse de Production.")
-        # Étapes 1-2 de la migration : la Production conserve les variables gérées par Emergent.
-        return {"environment": "production", "secret": (env.get("STRIPE_SECRET_KEY") or "").strip(),
-                "publishable": (env.get("STRIPE_PUBLISHABLE_KEY") or "").strip(),
-                "webhook": (env.get("STRIPE_WEBHOOK_SECRET") or "").strip(), "source": "STRIPE_*"}
+        prefix = "NEW_STRIPE_" if PRODUCTION_KEY_SOURCE == "new" else "STRIPE_"
+        secret = (env.get(prefix + "SECRET_KEY") or "").strip()
+        publishable = (env.get(prefix + "PUBLISHABLE_KEY") or "").strip()
+        webhook = (env.get(prefix + "WEBHOOK_SECRET") or "").strip()
+        if PRODUCTION_KEY_SOURCE == "new":
+            if not secret.startswith(("sk_live_", "rk_live_")):
+                _fail("NEW_STRIPE_SECRET_KEY absente ou n'est pas une clé LIVE (sk_live_/rk_live_).")
+            if not publishable.startswith("pk_live_"):
+                _fail("NEW_STRIPE_PUBLISHABLE_KEY absente ou n'est pas une clé LIVE (pk_live_).")
+            if not webhook:
+                _fail("NEW_STRIPE_WEBHOOK_SECRET absent : secret de l'endpoint webhook LIVE requis.")
+        return {"environment": "production", "secret": secret, "publishable": publishable,
+                "webhook": webhook, "source": prefix + "*"}
     _fail("PUBLIC_BASE_URL ne correspond ni à la Preview ni à la Production attendues.")

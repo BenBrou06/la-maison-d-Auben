@@ -22,6 +22,7 @@ from order_guard import order_deletion_blockers
 from product_rules import (DEFAULT_CURRENCY, commercial_issues, derive_lookup, effective_currency,
                            effective_lookup, lookup_owners, valid_lookup)
 from content_admin import router as content_router, ordered_articles
+from stripe_keys import select_stripe_keys
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
@@ -32,9 +33,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # --- Configuration Stripe (secrets uniquement via variables d'environnement) ---
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+_STRIPE = select_stripe_keys(os.environ)
+STRIPE_SECRET_KEY = _STRIPE["secret"]
 STRIPE_MODE = (os.environ.get("STRIPE_MODE") or "test").strip().lower()
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_WEBHOOK_SECRET = _STRIPE["webhook"]
 
 # Aucun fallback test : si la clé est absente, échec explicite (pas de mode Test silencieux).
 if not STRIPE_SECRET_KEY:
@@ -72,7 +74,7 @@ if STRIPE_MODE == "live" and not PUBLIC_BASE_URL.startswith("https://"):
     raise RuntimeError("CONFIG ERROR: PUBLIC_BASE_URL (https) est requise en production.")
 
 stripe.api_key = STRIPE_SECRET_KEY
-logger.info("Stripe initialisé | mode=%s | cle=%s", STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
+logger.info("Stripe initialisé | env=%s | source=%s | mode=%s | cle=%s", _STRIPE["environment"], _STRIPE["source"], STRIPE_MODE, "live" if _is_live_key else ("test" if _is_test_key else "inconnue"))
 
 DOWNLOAD_TTL_DAYS = 30
 DOWNLOAD_LIMIT = 25
@@ -660,6 +662,8 @@ async def order_by_session(session_id: str):
 async def stripe_webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(503, "Webhook non configuré")
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception:

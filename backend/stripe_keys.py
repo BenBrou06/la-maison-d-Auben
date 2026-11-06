@@ -4,7 +4,7 @@ PREVIEW_URL = "https://auben-preview-shop.preview.emergentagent.com"
 PRODUCTION_URL = "https://la-maison-dauben.com"
 LIVE_ACCOUNT_ID = "acct_1UHr1vA7WGaTzlxD"
 # Source des clés en Production : "new" = NEW_STRIPE_* (valeurs Live) ; retour arrière : "emergent" = STRIPE_* gérées par Emergent.
-PRODUCTION_KEY_SOURCE = "emergent"
+PRODUCTION_KEY_SOURCE = "new"
 
 
 def _fail(msg: str):

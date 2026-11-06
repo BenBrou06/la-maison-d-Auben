@@ -430,16 +430,34 @@ def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = 
         )
 
 
+def _startup_price_check(lookup_key: str, price: float, currency: str):
+    """Lecture seule : décrit l'écart éventuel entre le prix en base et le Price Stripe actif."""
+    prices = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data
+    if not prices:
+        return "aucun prix actif"
+    e0 = prices[0]
+    if e0.unit_amount != int(round(price * 100)) or e0.currency != currency or e0.tax_behavior != "inclusive":
+        return f"prix actif {e0.unit_amount} {e0.currency} ({e0.tax_behavior}) ≠ base {int(round(price * 100))} {currency} (inclusive)"
+    return None
+
+
 async def ensure_stripe_catalog():
     # Source de vérité = prix en base (édité via l'admin), jamais le prix du seed.
+    # Production : vérification en lecture seule au démarrage (aucune écriture Stripe LIVE).
+    read_only = _STRIPE["environment"] == "production"
     try:
         async for p in db.products.find({"price": {"$gt": 0},
                                          "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
             if commercial_issues(p) or len(await lookup_owners(db, lookup_of(p))) > 1:
                 logger.warning(f"Catalogue Stripe : {p['slug']} ignoré (fiche incomplète ou référence en double)")
                 continue
+            if read_only:
+                issue = _startup_price_check(lookup_of(p), p["price"], effective_currency(p, warn=True))
+                if issue:
+                    logger.warning(f"Catalogue Stripe (lecture seule) : écart pour {p['slug']} — {issue}. Aucune correction automatique au démarrage.")
+                continue
             sync_stripe_price(lookup_of(p), p["name"], p["price"], effective_currency(p, warn=True))
-        logger.info("Stripe catalog ensured")
+        logger.info("Stripe catalog checked (lecture seule)" if read_only else "Stripe catalog ensured")
     except Exception as e:
         logger.error(f"Stripe catalog setup failed: {e}")
 

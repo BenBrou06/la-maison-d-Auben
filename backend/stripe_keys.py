@@ -44,3 +44,22 @@ def select_stripe_keys(env) -> dict:
         return {"environment": "production", "secret": secret, "publishable": publishable,
                 "webhook": webhook, "source": prefix + "*"}
     _fail("PUBLIC_BASE_URL ne correspond ni à la Preview ni à la Production attendues.")
+
+
+def preflight_new_live(env, current_webhook: str, account_of) -> dict:
+    """Contrôle en lecture seule des valeurs NEW_STRIPE_* LIVE (résultats oui/non, jamais de valeur)."""
+    import hmac
+    secret = (env.get("NEW_STRIPE_SECRET_KEY") or "").strip()
+    publishable = (env.get("NEW_STRIPE_PUBLISHABLE_KEY") or "").strip()
+    webhook = (env.get("NEW_STRIPE_WEBHOOK_SECRET") or "").strip()
+    res = {"presentes": bool(secret and publishable and webhook),
+           "prefixe_secrete": secret.startswith(("sk_live_", "rk_live_")),
+           "prefixe_publiable": publishable.startswith("pk_live_"),
+           "webhook_identique": bool(webhook and current_webhook) and hmac.compare_digest(webhook, current_webhook),
+           "compte": "non vérifié"}
+    if res["prefixe_secrete"]:
+        try:
+            res["compte"] = "conforme" if account_of(secret) == LIVE_ACCOUNT_ID else "AUTRE COMPTE"
+        except Exception as e:
+            res["compte"] = "erreur " + type(e).__name__
+    return res

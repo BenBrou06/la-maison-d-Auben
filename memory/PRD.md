@@ -192,3 +192,9 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Marqueurs simulation : [SIMULER-ECHEC], [SIMULER-REFUS], [SIMULER-LENT].
 - Tests : test_contact_messages.py 12 passed ; iteration_19 frontend 100 % ; essai réel vers lamaisondauben@gmail.com (notification + confirmation + réponse acceptées par le fournisseur) ; redémarrage pendant envoi vérifié.
 - 2026-11 (v2.1) : filtre contextuel pour la messagerie (emailer.contextual_sensitive_issue, `_assert_safe_email(..., contextual=True)` utilisé uniquement par contact_admin) : termes seuls (cvv, seed/recovery phrase, social security number) non bloquants ; bloque demandes d'identifiants FR/EN (hors négation), CVV avec chiffres, n° de carte valide (Luhn). Règle par défaut (commandes/newsletter) inchangée. Tests contact 15 passed (dont concurrence : attempts == 1) ; redémarrage : file en base reprise, incertain jamais relancé automatiquement.
+
+## 2026-11-06 — Articles (retours à la ligne + ordre manuel) & clés Stripe Preview
+- Article.jsx : blocs `p` rendus via RichText (règles identiques aux Pages). h2 inchangés.
+- Ordre manuel : champ `position` (lazy : figé au 1er déplacement/création), `ordered_articles()` (content_admin.py) utilisé par GET /api/articles et /api/admin/articles ; POST /api/admin/articles/reorder (liste complète exigée, 409 sinon). Flèches ↑/↓ dans ArticlesPanel, enregistrement immédiat. tests/test_article_order.py (5).
+- backend/stripe_keys.py : sélection par PUBLIC_BASE_URL exacte. Preview (https://auben-preview-shop.preview.emergentagent.com) → NEW_STRIPE_* (sk/rk_test, pk_test, whsec requis). Production (https://la-maison-dauben.com, STRIPE_MODE=live) → STRIPE_* Emergent inchangées (étapes 1-2). URL inconnue → refus de démarrer. Étape 3 (bascule LIVE vers clés perso) NON faite.
+- Catalogue Stripe TEST réutilisé (0 produit/prix créé). Webhook TEST existant réutilisé.

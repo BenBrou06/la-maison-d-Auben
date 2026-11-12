@@ -39,7 +39,7 @@ function FieldInput({ f, value, onChange, products, editing }) {
     </select>
   );
   if (f.type === "destination") return (
-    <select value={value || "/boutique"} onChange={(e) => onChange(e.target.value)} className={inputCls} data-testid={id}>
+    <select value={HERO_PAGES.some(([to]) => to === value) || products.some((p) => `/boutique/${p.slug}` === value) ? value : "/boutique"} onChange={(e) => onChange(e.target.value)} className={inputCls} data-testid={id}>
       {HERO_PAGES.map(([to, label]) => <option key={to} value={to}>{label}</option>)}
       {products.length > 0 && <optgroup label="Fiches produits">
         {products.map((p) => <option key={p.slug} value={`/boutique/${p.slug}`}>{p.name}{p.purchasable ? "" : " — bientôt disponible"}</option>)}

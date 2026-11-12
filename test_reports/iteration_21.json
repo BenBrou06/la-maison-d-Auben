@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only E2E test on Preview of the evolved home hero and its admin settings. Admin > Pages > Accueil: the group 'Bandeau principal de la page d'accueil' shows the 9 fields in the requested order, with no technical words. The destination select has the 5 pages plus an optgroup 'Fiches produits' with 6 products, and its default is Boutique. The toggle has Activé/Désactivé buttons, a hint, and is disabled outside edit mode. Destination: each of /, /ressources, /a-propos, /faq, /boutique/suivi-sportif, /boutique/budget-couple and /boutique was saved through the UI. Each time hero-primary-cta had the matching href and clicking it opened the right page. hero-secondary-cta and featured-cta always stayed /boutique/budget-mensuel. A non-default value (FAQ) persisted after an admin reload. Button text 'TEST_Lire la FAQ' and destination /faq persisted and displayed independently. Unknown destination (/boutique/TEST_produit-supprime, set via API) falls back to /boutique. Frame Désactivé: data-framed=false, no border, shadow or white background, and no hero-frame-decor. The wrapper box stays 584x365 at the same x/y versus 584x365.75 when Activé, with a 1.600 ratio. The featured image keeps its frame. Switching back to Activé restores the frame and the decor. With an empty hero_image the hero shows /images/hero-default.png (loaded, naturalWidth 1586), while the featured section shows the product image. Caption: text with surrounding spaces renders trimmed, centered and italic under the image. A spaces-only or empty caption renders no hero-caption element. Responsive at 1920, 768 and 390: no horizontal overflow, caption readable (16px/16px/14px). Desktop header nav, mobile menu, /boutique and the product page all work. Edit mode (Modifier, pending count, 'modifié' labels, Annuler) works. Home content was RESTORED: /api/content home = {seo_title only}, same as before testing.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SitePagesPanel FieldInput (destination)", "issue": "If the stored hero_cta_primary_destination is no longer valid (product removed or renamed), the admin select shows the FIRST option 'Accueil', while the public site falls back to /boutique. The admin sees the wrong destination. Suggestion: in the select, map an unknown value to '/boutique', the same rule as Home.heroTo.", "selector": "[data-testid=content-field-hero_cta_primary_destination]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional (LOW): in the admin destination select, display Boutique when the stored destination is unknown, to match the public fallback.",
+    "Optional (LOW): Home.heroTo returns /boutique while products are still loading, even when a product destination is saved. A very fast click during the first load would go to /boutique. You could treat any /boutique/... value as valid until products are loaded."
+  ],
+  "critical_code_review_comments": [
+    "Home.jsx heroTo validation depends on the products query. During loading, a product destination temporarily renders href=/boutique (brief flicker, wrong target if clicked).",
+    "Unframed image is 2px larger than the framed one (border removed): 584x365 vs 582x363.75 for the inner image. The wrapper box is identical, which is acceptable.",
+    "save(): values equal to the default are sent as null, so restoring the defaults cleanly removes the overrides (verified: frame true and destination /boutique are removed from the stored doc)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend only)", "frontend": "100% of requested checks pass; 1 low-priority admin display issue for invalid stored destination"},
+  "seed_data_creation": "No new records. Home content was temporarily overridden (hero_cta_primary, hero_cta_primary_destination, hero_caption, hero_image_frame_enabled) and then restored. The final stored home fields are only the original seo_title. No products, prices, orders or Stripe were touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin: admin-tab-pages, then content-page-form-home. Buttons: content-edit-btn, content-save-btn, content-cancel-btn. Pending badge: content-page-pending-home. Fields: content-field-hero_cta_primary_destination (select), content-field-hero_cta_primary, content-field-hero_caption, content-field-hero_image_frame_enabled-on/-off. Success toast: 'Contenu enregistré.'. Public: hero-primary-cta, hero-secondary-cta, featured-cta, hero-frame-decor, hero-caption, [data-framed]. Public content API: GET /api/content returns {home:{...}}. Original home stored fields: only seo_title."
+}

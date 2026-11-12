@@ -11,6 +11,9 @@ import { Newsletter } from "@/components/Newsletter";
 import { getSettings, getProducts, getCategories, getArticles, mediaUrl } from "@/lib/api";
 import { formatPrice, t } from "@/lib/i18n";
 import { useContent } from "@/lib/content";
+import { HERO_PAGES } from "@/content/schema";
+
+const HERO_DEFAULT_IMAGE = "/images/hero-default.png";
 
 const PRINCIPLE_ICONS = [Sparkles, Wand2, Star, HeartHandshake];
 
@@ -22,7 +25,11 @@ export default function Home() {
 
   const c = useContent("home");
   const featured = (c.featured_slug && products.find((p) => p.slug === c.featured_slug)) || products.find((p) => p.purchasable);
-  const heroImage = c.hero_image ? mediaUrl(c.hero_image) : featured?.main_image ? mediaUrl(featured.main_image) : "";
+  const heroImage = c.hero_image ? mediaUrl(c.hero_image) : HERO_DEFAULT_IMAGE;
+  const heroFramed = c.hero_image_frame_enabled !== false;
+  const heroCaption = (c.hero_caption || "").trim();
+  const dest = c.hero_cta_primary_destination;
+  const heroTo = HERO_PAGES.some(([to]) => to === dest) || products.some((p) => `/boutique/${p.slug}` === dest) ? dest : "/boutique";
   const catMap = Object.fromEntries(categories.map((c) => [c.slug, c]));
 
   return (
@@ -49,7 +56,7 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                to="/boutique"
+                to={heroTo}
                 data-testid="hero-primary-cta"
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-6 py-3.5 font-medium text-[#FAF8F5] transition-all duration-200 hover:bg-[#3B6B4C] active:scale-[0.98]"
               >
@@ -68,8 +75,9 @@ export default function Home() {
           </Reveal>
           <Reveal delay={0.15}>
             <div className="relative">
-              <div className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-[#EAF0EC] to-[#F2EDE4]" />
-              <HeroVisual url={heroImage} caption={c.hero_caption || featured?.name || "Budget mensuel"} />
+              {heroFramed && <div className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-[#EAF0EC] to-[#F2EDE4]" data-testid="hero-frame-decor" />}
+              <HeroVisual url={heroImage} caption={heroCaption || "Image principale de La Maison d'Auben"} framed={heroFramed} />
+              {heroCaption && <p className="mt-4 text-center font-serif text-sm italic text-[#626D66] sm:text-base" data-testid="hero-caption">{heroCaption}</p>}
             </div>
           </Reveal>
         </div>

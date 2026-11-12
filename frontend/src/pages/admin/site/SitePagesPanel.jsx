@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ExternalLink } from "lucide-react";
 import { adminContent, adminSaveContent, getProducts, mediaUrl } from "@/lib/api";
-import { CONTENT_PAGES, defaultsFor } from "@/content/schema";
+import { CONTENT_PAGES, defaultsFor, HERO_PAGES } from "@/content/schema";
 import { groupFields } from "@/content/adminLabels";
 import { ImageInput, ListEditor, inputCls, btnCls } from "@/pages/admin/site/fields";
 import { useEditSession, EditModeBar, TrackedLabel, SaveButtons, PendingBadge, CONFIRM_DISCARD, same } from "@/pages/admin/site/editTracking";
@@ -37,6 +37,23 @@ function FieldInput({ f, value, onChange, products, editing }) {
       <option value="">Automatique (1er produit disponible)</option>
       {products.map((p) => <option key={p.slug} value={p.slug}>{p.name}{p.purchasable ? "" : " — bientôt disponible"}</option>)}
     </select>
+  );
+  if (f.type === "destination") return (
+    <select value={value || "/boutique"} onChange={(e) => onChange(e.target.value)} className={inputCls} data-testid={id}>
+      {HERO_PAGES.map(([to, label]) => <option key={to} value={to}>{label}</option>)}
+      {products.length > 0 && <optgroup label="Fiches produits">
+        {products.map((p) => <option key={p.slug} value={`/boutique/${p.slug}`}>{p.name}{p.purchasable ? "" : " — bientôt disponible"}</option>)}
+      </optgroup>}
+    </select>
+  );
+  if (f.type === "toggle") return (
+    <div className="flex gap-2" role="radiogroup" data-testid={id}>
+      {[[true, "Activé"], [false, "Désactivé"]].map(([v, label]) => (
+        <button key={label} type="button" role="radio" aria-checked={(value !== false) === v} onClick={() => onChange(v)}
+          className={`rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${(value !== false) === v ? "border-[#1E3A2B] bg-[#1E3A2B] text-[#FAF8F5]" : "border-[#E2DDD5] bg-white text-[#2C332E] hover:bg-[#FAF8F5]"} disabled:cursor-default`}
+          data-testid={`${id}-${v ? "on" : "off"}`}>{label}</button>
+      ))}
+    </div>
   );
   if (f.type === "textarea") return <textarea rows={f.rows || 3} value={value || ""} onChange={(e) => onChange(e.target.value)} className={inputCls} data-testid={id} />;
   return <input value={value || ""} onChange={(e) => onChange(e.target.value)} className={inputCls} data-testid={id} />;

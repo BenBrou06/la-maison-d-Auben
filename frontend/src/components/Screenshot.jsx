@@ -45,10 +45,10 @@ export const LaptopMockup = ({ url, caption, className = "" }) => (
 export default Screenshot;
 
 // Visuel principal : image réelle dans un cadre premium, sinon mockup placeholder.
-export const HeroVisual = ({ url, caption, className = "" }) => {
+export const HeroVisual = ({ url, caption, className = "", framed = true }) => {
   if (url) {
     return (
-      <div className={`overflow-hidden rounded-2xl border border-[#E2DDD5] bg-white shadow-[0_24px_60px_-24px_rgba(30,58,43,0.4)] ${className}`}>
+      <div className={`overflow-hidden rounded-2xl ${framed ? "border border-[#E2DDD5] bg-white shadow-[0_24px_60px_-24px_rgba(30,58,43,0.4)]" : ""} ${className}`} data-framed={framed}>
         <img src={url} alt={caption || "Visuel du produit"} className="block aspect-[16/10] w-full object-cover" />
       </div>
     );

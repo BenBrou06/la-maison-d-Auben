@@ -34,9 +34,11 @@ export const CONTENT_PAGES = [
     { name: "hero_title", label: "Hero — titre (retour à la ligne = saut de ligne)", type: "textarea", rows: 2, default: "L'aubaine pour\nmieux s'organiser." },
     { name: "hero_intro", label: "Hero — texte (vide = texte des réglages du site)", type: "textarea", default: "" },
     { name: "hero_cta_primary", label: "Hero — bouton principal", type: "text", default: "Découvrir les outils" },
+    { name: "hero_cta_primary_destination", label: "Hero — destination du bouton principal", type: "destination", default: "/boutique" },
     { name: "hero_cta_secondary", label: "Hero — bouton produit phare (vide = « Découvrir » + nom du produit)", type: "text", default: "" },
-    { name: "hero_image", label: "Hero — visuel (vide = image du produit phare)", type: "image", default: "" },
-    { name: "hero_caption", label: "Hero — légende du visuel (vide = nom du produit)", type: "text", default: "" },
+    { name: "hero_image", label: "Hero — image principale (vide = image par défaut)", type: "image", default: "" },
+    { name: "hero_caption", label: "Hero — légende affichée sous l'image (vide = aucune)", type: "text", default: "" },
+    { name: "hero_image_frame_enabled", label: "Hero — encadrement de l'image principale", type: "toggle", default: true },
     { name: "featured_slug", label: "Produit mis en avant (slug ; vide = 1er produit disponible)", type: "product", default: "" },
     { name: "featured_eyebrow", label: "Produit phare — surtitre", type: "text", default: "Produit phare" },
     { name: "featured_caption", label: "Produit phare — légende du visuel", type: "text", default: "Aperçu du produit" },
@@ -149,3 +151,6 @@ export const PAGE_BY_KEY = Object.fromEntries(CONTENT_PAGES.map((p) => [p.key, p
 
 export const defaultsFor = (key) =>
   Object.fromEntries((PAGE_BY_KEY[key]?.fields || []).map((f) => [f.name, f.default]));
+
+// Pages proposées comme destination du bouton principal de l'accueil (les fiches produits s'ajoutent dynamiquement).
+export const HERO_PAGES = [["/", "Accueil"], ["/boutique", "Boutique"], ["/ressources", "Ressources"], ["/a-propos", "À propos"], ["/faq", "FAQ"]];

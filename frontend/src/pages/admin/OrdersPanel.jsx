@@ -163,7 +163,7 @@ export default function OrdersPanel() {
                     <td className="py-2.5 pr-4 font-medium text-[#1E3A2B]">{o.product_name}<ModeTag o={o} /><span className="block text-[10px] font-normal text-[#626D66]">N° {o.id}</span></td>
                     <td className="py-2.5 pr-4">{formatPrice(o.amount, o.currency)}</td>
                     <td className="py-2.5 pr-4 text-[#626D66]">{o.customer_email || "—"}</td>
-                    <td className="py-2.5 pr-4"><span className="rounded-full bg-[#EAF0EC] px-2.5 py-1 text-xs font-medium text-[#3B6B4C]">{o.status}</span></td>
+                    <td className="py-2.5 pr-4"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${o.status === "paid" ? "bg-[#EAF0EC] text-[#3B6B4C]" : "bg-[#FCEFD9] text-[#8A5A12]"}`} data-testid={`order-status-${o.id}`}>{o.status}</span></td>
                     <td className="py-2.5 pr-4 text-[#626D66]">{new Date(o.created_at).toLocaleDateString("fr-FR")}</td>
                     <td className="py-2.5 pr-4"><DownloadCell o={o} onChanged={refresh} /></td>
                     <td className="py-2.5 text-xs">

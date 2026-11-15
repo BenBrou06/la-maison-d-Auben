@@ -50,10 +50,11 @@ def download_state(order: dict, product: Optional[dict]) -> str:
     if not order.get("download_token") or not order.get("download_expires_at"):
         return "invalid"
     try:
-        if now() > datetime.fromisoformat(order["download_expires_at"]):
-            return "expired"
-    except ValueError:
+        exp = datetime.fromisoformat(order["download_expires_at"])
+    except (ValueError, TypeError):
         return "invalid"
+    if now() > (exp if exp.tzinfo else exp.replace(tzinfo=timezone.utc)):
+        return "expired"
     if (order.get("download_count") or 0) >= (order.get("download_limit") or DEFAULT_LIMIT):
         return "exhausted"
     return "valid"
@@ -140,6 +141,7 @@ async def renew_download(order_id: str, inp: RenewInput, admin=Depends(get_curre
     if check.get("unverifiable"):
         reason = (inp.exception_reason or "").strip()
         if inp.exception_confirmation != EXCEPTION_WORD or len(reason) < 10:
+            await _log(order_id, admin, "needs_exception", detail=check["unverifiable"])
             raise HTTPException(409, {"code": "needs_exception", "message": check["unverifiable"]})
         method = "exception"
     token = secrets.token_urlsafe(32)

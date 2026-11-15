@@ -1,0 +1,27 @@
+{
+  "summary": "Tested the 'Renouveler le lien de téléchargement' feature in Admin > Commandes from end to end in the UI on Preview, with synthetic orders (test-ui-renew-*) plus one real Stripe TEST checkout. Everything requested passes: state badges, expiry line, renew button or blocker text, search by email and by order number with an empty-result message, and the exception form (submit stays disabled until RENOUVELER is typed exactly and the reason is at least 10 characters). After renewal: success toast, 'Valide' badge, full link on the Preview domain under /telechargement/, and 'Lien copié.' with the clipboard matching the link. Old token gives 404; new token gives 200 with the xlsx file. The renewal record stores the admin, method 'exception' and the reason; amount, status and session are unchanged. Simulated e-mail: the confirmation shows product and e-mail, the toast mentions simulation, and the status reads 'E-mail envoyé le …'. On '+simuler-echec@', sending fails: error toast, failure status, link still shown, button changes to 'Réessayer l'envoi', and the retry runs (2 failed attempts recorded). Renewing a still-valid link shows the browser confirm. Double clicks on the renew and exception-submit buttons gave download_renewal_count = 1. Non-paid, cs_live_ and no-file orders are blocked correctly. Real Stripe TEST purchase (4242 card) created order c83e4cdc-ba50-47a4-923f-06f15d295e01. With its expiry set to the past, renew succeeded with no exception form (method 'stripe'). The deletion column and the other admin tabs still work.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "POST /api/admin/orders/{id}/renew-download", "issue": "When the exception is required (409 needs_exception), the attempt is not written to download_renewals. Only refused, conflict and renewed results are logged. Optional audit gap."},
+    {"endpoint": "download_renewal.download_state", "issue": "datetime.fromisoformat on a naive (timezone-less) download_expires_at would raise TypeError when compared with an aware now(), which is not caught by 'except ValueError', giving a 500 on /api/admin/orders. Current data is all timezone-aware, so this is defensive only."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [{"screen": "Admin > Commandes", "issues": ["The Statut column badge is always green, even for status 'pending' (same style as 'paid'). Consider a neutral or amber colour for non-paid statuses.", "The link input is truncated in the cell (expected, since it is readOnly and selects on focus). Acceptable."]}]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: colour the Statut badge by status (non-paid should not be green).",
+    "Optional: log needs_exception attempts in download_renewals, and catch TypeError in download_state."
+  ],
+  "critical_code_review_comments": [
+    "The renewal update filter (old-token match + 15 s window) and the frontend busy flag together prevent double renewals. Verified with double clicks.",
+    "verify_payment is read-only (Session.retrieve only). No order or payment is created, and the amount is untouched (verified in DB)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (via UI-driven calls and DB checks)", "frontend": "100%"},
+  "seed_data_creation": "Synthetic orders test-ui-renew-{a,fail,valid,pending,live,nofile} and product test-ui-renew-nofile were created, then all deleted, together with their download_renewals documents. KEPT: the real Stripe TEST order c83e4cdc-ba50-47a4-923f-06f15d295e01 (test-ui-renew@example.com, cs_test_a0PZtFcDgfNpyqKyZpRYDkZWAXXiFfHXPzSDnU5CgRoD9JpbMfak5jUyvV, 6.99 EUR). It has been renewed once via Stripe, expires 2026-12-15 and has a 'renewed' entry in download_renewals.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "System clock is Nov 2026, so the two 2026-09-21 preview orders now show 'Expiré' (read only, untouched). The Budget mensuel price is currently 6.99 EUR (credentials file says 7.99). The Stripe checkout defaulted to the USD adaptive-currency option, which displayed $8.02 (EUR €6.99 was the other option); the order still records 6.99 EUR. Login uses admin-email-input, admin-password-input and admin-login-submit; the tab is admin-tab-orders."
+}

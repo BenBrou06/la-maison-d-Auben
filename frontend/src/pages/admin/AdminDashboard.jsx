@@ -8,6 +8,7 @@ import { Seo } from "@/components/Seo";
 import ContentPanel from "@/pages/admin/ContentPanel";
 import NewsletterPanel from "@/pages/admin/NewsletterPanel";
 import MessagesPanel from "@/pages/admin/MessagesPanel";
+import OrdersPanel from "@/pages/admin/OrdersPanel";
 import SitePagesPanel from "@/pages/admin/site/SitePagesPanel";
 import ArticlesPanel from "@/pages/admin/site/ArticlesPanel";
 import FaqPanel from "@/pages/admin/site/FaqPanel";
@@ -265,59 +266,3 @@ function ProductRow({ p, health, onSync, onUploadFile, onDeleteFile, onUploadIma
     </div>
   );
 }
-
-function OrdersPanel() {
-  const qc = useQueryClient();
-  const { data: orders = [] } = useQuery({ queryKey: ["admin-orders"], queryFn: adminOrders });
-  const [toDelete, setToDelete] = useState(null);
-  const del = async (word) => {
-    try {
-      const r = await adminDeleteOrder(toDelete.id, word);
-      toast.success(`Commande TEST supprimée (${r.deleted_transactions} transaction(s) TEST).`);
-      qc.invalidateQueries({ queryKey: ["admin-orders"] });
-    } catch (e) { toast.error(e.response?.data?.detail || "Suppression impossible."); }
-    setToDelete(null);
-  };
-  return (
-    <Panel title={`Commandes (${orders.length})`}>
-      {orders.length === 0 ? <p className="text-sm text-[#626D66]">Aucune commande pour le moment.</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="admin-orders-table">
-            <thead><tr className="border-b border-[#E2DDD5] text-left text-[#626D66]">
-              <th className="py-2 pr-4">Produit</th><th className="py-2 pr-4">Montant</th><th className="py-2 pr-4">E-mail</th><th className="py-2 pr-4">Statut</th><th className="py-2 pr-4">Date</th><th className="py-2">Suppression</th>
-            </tr></thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id} className="border-b border-[#E2DDD5]/60" data-testid={`admin-order-row-${o.id}`}>
-                  <td className="py-2.5 pr-4 font-medium text-[#1E3A2B]">{o.product_name}</td>
-                  <td className="py-2.5 pr-4">{formatPrice(o.amount, o.currency)}</td>
-                  <td className="py-2.5 pr-4 text-[#626D66]">{o.customer_email || "—"}</td>
-                  <td className="py-2.5 pr-4"><span className="rounded-full bg-[#EAF0EC] px-2.5 py-1 text-xs font-medium text-[#3B6B4C]">{o.status}</span></td>
-                  <td className="py-2.5 pr-4 text-[#626D66]">{new Date(o.created_at).toLocaleDateString("fr-FR")}</td>
-                  <td className="py-2.5 text-xs">
-                    {o.deletable ? (
-                      <button onClick={() => setToDelete(o)} className="inline-flex items-center gap-1 text-[#8A2A1F] hover:underline" data-testid={`order-delete-btn-${o.id}`}>
-                        <Trash2 className="h-3.5 w-3.5" /> Supprimer (TEST)
-                      </button>
-                    ) : (
-                      <span className="text-[#626D66]" title={(o.deletion_blockers || []).join(" ")} data-testid={`order-delete-blocked-${o.id}`}>
-                        Protégée — {(o.deletion_blockers || [])[0]}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <ConfirmDeleteDialog
-        open={!!toDelete} testid="delete-order"
-        title="Supprimer cette commande TEST ?"
-        description={`Commande ${toDelete?.product_name || ""} — ${toDelete?.customer_email || ""}. Le serveur revérifie qu'elle et ses transactions sont en mode Stripe TEST ; aucune action Stripe ni e-mail n'est déclenché.`}
-        onCancel={() => setToDelete(null)} onConfirm={del}
-      />
-    </Panel>
-  );
-}
-

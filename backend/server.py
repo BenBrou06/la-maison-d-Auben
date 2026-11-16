@@ -404,63 +404,82 @@ async def media(path: str):
 # --------------------------------------------------------------------------- #
 # Payments (Stripe)
 # --------------------------------------------------------------------------- #
-def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = "eur"):
-    """Assure un Product + Price Stripe pour ce lookup_key, à la valeur serveur donnée.
-    Mécanisme identique au catalogue : désactive un Price qui ne correspond pas et le recrée."""
-    product = None
+def _stripe_product(lookup_key: str):
     for p in stripe.Product.list(active=True, limit=100).auto_paging_iter():
         if p.to_dict().get("metadata", {}).get("emergent_product_id") == lookup_key:
-            product = p
-            break
-    if not product:
-        product = stripe.Product.create(
-            name=name, tax_code="txcd_10302000",
-            metadata={"managed_by": "emergent", "emergent_product_id": lookup_key},
-        )
-    amount = int(round(price * 100))
-    existing = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data
-    if existing:
-        e0 = existing[0]
-        if e0.unit_amount != amount or e0.currency != currency or e0.tax_behavior != "inclusive":
-            stripe.Price.modify(e0.id, active=False)
-            existing = []
-    if not existing:
-        stripe.Price.create(
-            product=product.id, unit_amount=amount, currency=currency,
-            lookup_key=lookup_key, transfer_lookup_key=True, tax_behavior="inclusive",
-        )
-
-
-def _startup_price_check(lookup_key: str, price: float, currency: str):
-    """Lecture seule : décrit l'écart éventuel entre le prix en base et le Price Stripe actif."""
-    prices = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data
-    if not prices:
-        return "aucun prix actif"
-    e0 = prices[0]
-    if e0.unit_amount != int(round(price * 100)) or e0.currency != currency or e0.tax_behavior != "inclusive":
-        return f"prix actif {e0.unit_amount} {e0.currency} ({e0.tax_behavior}) ≠ base {int(round(price * 100))} {currency} (inclusive)"
+            return p
     return None
 
 
+def _conforms(pr, amount: int, currency: str) -> bool:
+    return pr.unit_amount == amount and pr.currency == currency and pr.tax_behavior == "inclusive"
+
+
+def _prod_id(pr):
+    return pr.product if isinstance(pr.product, str) else getattr(pr.product, "id", None)
+
+
+def price_diagnostic(lookup_key: str, price: float, currency: str):
+    """Lecture seule, contrôle commun (démarrage, admin, paiement) : None si conforme, sinon explication."""
+    amount = int(round(price * 100))
+    product = _stripe_product(lookup_key)
+    holder = (stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data or [None])[0]
+    conforming = [pr for pr in stripe.Price.list(product=product.id, active=True, limit=100).auto_paging_iter()
+                  if _conforms(pr, amount, currency)] if product else []
+    hint = " Un prix conforme existe déjà chez Stripe : la synchronisation le réutilisera." if conforming and (not holder or holder.id not in {c.id for c in conforming}) else ""
+    if not product:
+        return "aucun produit Stripe associé à cette référence"
+    if not holder:
+        return "aucun prix actif ne porte la référence « " + lookup_key + " »." + hint
+    problems = []
+    if _prod_id(holder) != product.id:
+        problems.append("le prix porteur de la référence appartient à un autre produit Stripe")
+    if holder.unit_amount != amount:
+        problems.append(f"montant {holder.unit_amount / 100:.2f} au lieu de {amount / 100:.2f}")
+    if holder.currency != currency:
+        problems.append(f"devise {holder.currency} au lieu de {currency}")
+    if holder.tax_behavior != "inclusive":
+        problems.append(f"TVA « {holder.tax_behavior} » au lieu de TTC (inclusive)")
+    return ("prix Stripe actif non conforme : " + ", ".join(problems) + "." + hint) if problems else None
+
+
+def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = "eur"):
+    """Écriture explicite (bouton, modification admin, paiement) : réutilise un prix conforme, n'en crée qu'à défaut,
+    et ne désactive que l'ancien porteur non conforme de la référence."""
+    amount = int(round(price * 100))
+    product = _stripe_product(lookup_key) or stripe.Product.create(
+        name=name, tax_code="txcd_10302000", metadata={"managed_by": "emergent", "emergent_product_id": lookup_key})
+    holder = (stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data or [None])[0]
+    if holder and _prod_id(holder) == product.id and _conforms(holder, amount, currency):
+        return
+    reuse = next((pr for pr in stripe.Price.list(product=product.id, active=True, limit=100).auto_paging_iter()
+                  if _conforms(pr, amount, currency)), None)
+    if reuse:
+        stripe.Price.modify(reuse.id, lookup_key=lookup_key, transfer_lookup_key=True)
+        logger.info(f"Stripe : prix conforme réutilisé pour {lookup_key}")
+    else:
+        stripe.Price.create(product=product.id, unit_amount=amount, currency=currency,
+                            lookup_key=lookup_key, transfer_lookup_key=True, tax_behavior="inclusive")
+        logger.info(f"Stripe : nouveau prix créé pour {lookup_key}")
+    if holder:
+        stripe.Price.modify(holder.id, active=False)
+        logger.info(f"Stripe : ancien prix non conforme désactivé pour {lookup_key}")
+
+
 async def ensure_stripe_catalog():
-    # Source de vérité = prix en base (édité via l'admin), jamais le prix du seed.
-    # Production : vérification en lecture seule au démarrage (aucune écriture Stripe LIVE).
-    read_only = _STRIPE["environment"] == "production"
+    # Démarrage strictement sans écriture Stripe (TEST comme LIVE) : écarts signalés, corrigés seulement sur action explicite.
     try:
         async for p in db.products.find({"price": {"$gt": 0},
                                          "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
             if commercial_issues(p) or len(await lookup_owners(db, lookup_of(p))) > 1:
                 logger.warning(f"Catalogue Stripe : {p['slug']} ignoré (fiche incomplète ou référence en double)")
                 continue
-            if read_only:
-                issue = _startup_price_check(lookup_of(p), p["price"], effective_currency(p, warn=True))
-                if issue:
-                    logger.warning(f"Catalogue Stripe (lecture seule) : écart pour {p['slug']} — {issue}. Aucune correction automatique au démarrage.")
-                continue
-            sync_stripe_price(lookup_of(p), p["name"], p["price"], effective_currency(p, warn=True))
-        logger.info("Stripe catalog checked (lecture seule)" if read_only else "Stripe catalog ensured")
+            issue = price_diagnostic(lookup_of(p), p["price"], effective_currency(p, warn=True))
+            if issue:
+                logger.warning(f"Catalogue Stripe (lecture seule) : écart pour {p['slug']} — {issue} Aucune correction automatique au démarrage.")
+        logger.info(f"Stripe catalog checked (lecture seule, env={_STRIPE['environment']})")
     except Exception as e:
-        logger.error(f"Stripe catalog setup failed: {e}")
+        logger.error(f"Stripe catalog check failed: {type(e).__name__}")
 
 
 @api.post("/payments/checkout")
@@ -486,11 +505,10 @@ async def create_checkout(request: Request, req: CheckoutInput):
     }
     expected = int(round(product["price"] * 100))
     currency = product.get("currency") or "eur"
-    prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
-    if not prices or prices[0].unit_amount != expected or prices[0].currency != currency:
+    if price_diagnostic(req.lookup_key, product["price"], currency):
         # Le prix Stripe doit toujours être celui affiché sur le site (prix en base).
         sync_stripe_price(req.lookup_key, product["name"], product["price"], currency)
-        prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
+    prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
     if not prices or prices[0].unit_amount != expected:
         raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
     price = prices[0]
@@ -968,15 +986,11 @@ async def delete_product_file(slug: str, admin=Depends(get_current_admin)):
 
 def _stripe_price_issue(key: str, price: float, currency: str):
     try:
-        prices = stripe.Price.list(lookup_keys=[key], active=True, limit=1).data
+        issue = price_diagnostic(key, price, currency)
     except Exception as e:
         logger.error(f"Diagnostic Stripe impossible pour {key}: {type(e).__name__}")
         return {"code": "stripe_unreachable", "message": "Vérification Stripe impossible pour le moment."}
-    if not prices:
-        return {"code": "stripe_price", "message": "Aucun prix actif chez Stripe pour cette référence."}
-    if prices[0].unit_amount != int(round(price * 100)) or prices[0].currency != currency:
-        return {"code": "stripe_price", "message": "Le prix Stripe actif ne correspond pas au prix enregistré."}
-    return None
+    return {"code": "stripe_price", "message": "Stripe : " + issue[0].upper() + issue[1:]} if issue else None
 
 
 async def _product_health(p: dict) -> dict:

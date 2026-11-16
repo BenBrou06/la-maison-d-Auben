@@ -25,6 +25,7 @@ from content_admin import router as content_router, ordered_articles
 from stripe_keys import select_stripe_keys, preflight_new_live, LIVE_ACCOUNT_ID
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
+from download_renewal import router as renewal_router, admin_view as download_admin_view
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
@@ -791,7 +792,9 @@ async def admin_orders(admin=Depends(get_current_admin)):
     orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     sids = [o.get("session_id") for o in orders if o.get("session_id")]
     txs = await db.payment_transactions.find({"session_id": {"$in": sids}}, {"_id": 0}).to_list(5000)
+    products = {p["slug"]: p for p in await db.products.find({}, {"_id": 0, "slug": 1, "download_storage_path": 1}).to_list(500)}
     for o in orders:
+        o.update(download_admin_view(o, products.get(o.get("product_slug"))))
         o["deletion_blockers"] = order_deletion_blockers(o, [t for t in txs if t["session_id"] == o.get("session_id")])
         o["deletable"] = not o["deletion_blockers"]
     return orders
@@ -1170,6 +1173,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 api.include_router(newsletter_router)
 api.include_router(content_router)
 api.include_router(contact_router)
+api.include_router(renewal_router)
 app.include_router(api)
 
 

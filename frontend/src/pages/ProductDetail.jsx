@@ -1,32 +1,27 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Download, Lock, ShieldCheck, X, ChevronLeft, ChevronRight, FileSpreadsheet } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Seo } from "@/components/Seo";
 import { Reveal } from "@/components/Reveal";
 import { Icon } from "@/components/Icon";
-import { Screenshot, LaptopMockup, HeroVisual } from "@/components/Screenshot";
+import { HeroVisual } from "@/components/Screenshot";
+import { MediaCarousel, playableMedia } from "@/components/MediaCarousel";
+import { PriceTag, promoEnds } from "@/components/PriceTag";
+import { KeyFacts, ReassuranceStrip, ReassuranceSection, BenefitsSection, BeforeYouBuy, Testimonials } from "@/components/ProductSections";
 import { getProduct, getCategories, createCheckout, mediaUrl } from "@/lib/api";
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
-import { formatPrice, t } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { WITHDRAWAL_CONSENT_VERSION, SITE_URL, absUrl } from "@/lib/site";
 import { WithdrawalConsent } from "@/components/WithdrawalConsent";
 
 export default function ProductDetail() {
   const { slug } = useParams();
   const [buying, setBuying] = useState(false);
-  const [lightbox, setLightbox] = useState(null); // index
   const [waiver, setWaiver] = useState(false);
-
-  useEffect(() => {
-    if (lightbox === null) return undefined;
-    const onKey = (e) => { if (e.key === "Escape") setLightbox(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [lightbox]);
 
   const { data: product, isLoading, isError } = useQuery({ queryKey: ["product", slug], queryFn: () => getProduct(slug) });
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
@@ -60,9 +55,12 @@ export default function ProductDetail() {
   if (isLoading) return <div className="container-app py-24 text-center text-[#626D66]">Chargement…</div>;
   if (isError || !product) return <div className="container-app py-24 text-center text-[#626D66]">Produit introuvable.</div>;
 
-  const gallery = product.gallery || [];
   const coming = !product.purchasable;
-  const galleryUrl = (g) => (g.url ? g.url : g.storage_path ? mediaUrl(g.storage_path) : "");
+  const media = playableMedia([
+    ...(product.main_image ? [{ key: "main", type: "image", storage_path: product.main_image, caption: "" }] : []),
+    ...(product.gallery || []),
+  ]);
+  const reassurance = product.reassurance || [];
 
   return (
     <>
@@ -81,7 +79,7 @@ export default function ProductDetail() {
           brand: { "@type": "Brand", name: "La Maison d'Auben" },
           // Offre uniquement pour un produit réellement achetable (prix et fichier réels).
           ...(product.purchasable ? { offers: {
-            "@type": "Offer", url: `${SITE_URL}/boutique/${slug}`, price: Number(product.price).toFixed(2),
+            "@type": "Offer", url: `${SITE_URL}/boutique/${slug}`, price: Number(product.pricing?.final ?? product.price).toFixed(2),
             priceCurrency: (product.currency || "eur").toUpperCase(), availability: "https://schema.org/InStock",
           } } : {}),
         }}
@@ -93,15 +91,13 @@ export default function ProductDetail() {
         </Link>
       </div>
 
-      {/* HERO PRODUIT */}
-      <section className="container-app grid items-center gap-10 py-10 lg:grid-cols-2 lg:py-14">
-        <Reveal>
-          <div className="relative p-2">
-            <div className="absolute -inset-4 -z-10 rounded-[2rem] bg-gradient-to-br from-[#EAF0EC] to-[#F2EDE4]" />
-            <HeroVisual url={product.main_image ? mediaUrl(product.main_image) : ""} caption={product.name} />
-          </div>
+      {/* HERO PRODUIT : visuels + décision d'achat */}
+      <section className="container-app grid items-start gap-10 py-8 lg:grid-cols-[1.15fr_1fr] lg:gap-14 lg:py-12">
+        <Reveal className="min-w-0 lg:sticky lg:top-24">
+          {media.length ? <MediaCarousel media={media} /> : <HeroVisual url="" caption={product.name} />}
+          {media.length > 1 && <p className="mt-3 text-center text-xs text-[#87A987]" data-testid="gallery-hint">Découvrez les différentes vues de votre outil.</p>}
         </Reveal>
-        <Reveal delay={0.1}>
+        <Reveal delay={0.1} className="min-w-0">
           {category && (
             <span className="eyebrow inline-flex items-center gap-1.5">
               <Icon name={category.icon} className="h-3.5 w-3.5" /> {category.name}
@@ -111,25 +107,23 @@ export default function ProductDetail() {
           <p className="mt-4 text-lg text-[#626D66]">{product.short_description}</p>
           {!coming ? (
             <>
-              <div className="mt-8 flex items-baseline gap-3">
-                <span className="font-serif text-4xl font-bold text-[#1E3A2B]">{formatPrice(product.price, product.currency)}</span>
-                <span className="text-sm text-[#87A987]">Paiement unique · Téléchargement immédiat</span>
+              <div className="mt-7">
+                <PriceTag product={product} size="lg" testid="product-price" />
+                <p className="mt-1.5 text-sm text-[#87A987]">Paiement unique · Téléchargement immédiat</p>
+                {promoEnds(product) && <p className="mt-1 text-xs font-medium text-[#A9772F]" data-testid="promo-ends">{promoEnds(product)}</p>}
               </div>
+              <KeyFacts product={product} />
               <WithdrawalConsent id="withdrawal-consent" checked={waiver} onChange={setWaiver} />
               <button
                 onClick={buy}
                 disabled={buying || !waiver}
                 aria-describedby="withdrawal-consent"
                 data-testid="buy-now-btn"
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-8 py-4 text-lg font-medium text-[#FAF8F5] transition-all duration-200 hover:bg-[#3B6B4C] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E3A2B] px-8 py-4 text-lg font-medium text-[#FAF8F5] transition-[background-color,transform] duration-200 hover:bg-[#3B6B4C] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {buying ? t("cta.buy_processing") : <>{t("cta.buy")} <ArrowRight className="h-5 w-5" /></>}
               </button>
-              <div className="mt-5 flex flex-wrap gap-4 text-xs text-[#626D66]">
-                <span className="inline-flex items-center gap-1.5"><Lock className="h-3.5 w-3.5 text-[#3B6B4C]" /> Paiement sécurisé Stripe</span>
-                <span className="inline-flex items-center gap-1.5"><Download className="h-3.5 w-3.5 text-[#3B6B4C]" /> Accès immédiat</span>
-                <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-[#3B6B4C]" /> Lien de téléchargement protégé</span>
-              </div>
+              <ReassuranceStrip items={reassurance} />
             </>
           ) : (
             <div className="mt-8 rounded-2xl bg-[#F2EDE4] p-6">
@@ -140,16 +134,19 @@ export default function ProductDetail() {
         </Reveal>
       </section>
 
-      {/* CONTENU RICHE — affiché aussi pour les produits « bientôt disponibles » */}
+      {!coming && <ReassuranceSection items={reassurance} />}
+
       <>
+          <BenefitsSection benefits={product.benefits} />
+
           {/* PRÉSENTATION */}
           <section className="bg-[#F2EDE4] py-14 sm:py-20">
             <div className="container-app grid gap-10 lg:grid-cols-[1.2fr_1fr] lg:items-center">
               <Reveal>
                 <span className="eyebrow">Présentation</span>
                 <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">Pour qui, et pourquoi ?</h2>
-                <p className="mt-5 text-[#626D66]">{product.description}</p>
-                {product.audience && <p className="mt-4 text-[#626D66]">{product.audience}</p>}
+                <p className="mt-5 whitespace-pre-line text-[#626D66]">{product.description}</p>
+                {product.audience && <p className="mt-4 whitespace-pre-line text-[#626D66]">{product.audience}</p>}
               </Reveal>
               <Reveal delay={0.1}>
                 <img
@@ -171,7 +168,7 @@ export default function ProductDetail() {
               </Reveal>
               <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {product.features.map((f, i) => (
-                  <Reveal key={f.title} delay={(i % 3) * 0.06}>
+                  <Reveal key={f.title || i} delay={(i % 3) * 0.06}>
                     <div className="card-soft h-full p-7">
                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EAF0EC] text-[#3B6B4C]">
                         <Icon name={f.icon} className="h-6 w-6" />
@@ -185,65 +182,9 @@ export default function ProductDetail() {
             </section>
           )}
 
-          {/* GALERIE */}
-          {gallery.length > 0 && (
-            <section className="bg-[#F2EDE4] py-14 sm:py-20">
-              <div className="container-app">
-                <Reveal className="mx-auto max-w-2xl text-center">
-                  <span className="eyebrow">Galerie</span>
-                  <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">Un aperçu du produit</h2>
-                  <p className="mt-4 text-[#626D66]">Cliquez pour agrandir. Les vraies captures du fichier seront ajoutées ici.</p>
-                </Reveal>
-                <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                  {gallery.map((g, i) => (
-                    <Reveal key={g.key || i} delay={(i % 3) * 0.06}>
-                      <button
-                        onClick={() => setLightbox(i)}
-                        data-testid={`gallery-item-${i}`}
-                        className="block w-full overflow-hidden rounded-xl transition-transform duration-300 hover:scale-[1.02]"
-                      >
-                        <Screenshot url={galleryUrl(g)} caption={g.caption} icon="BarChart3" ratio="aspect-[16/11]" />
-                      </button>
-                    </Reveal>
-                  ))}
-                </div>
-              </div>
-            </section>
-          )}
+          <div className="bg-[#FAF8F5]"><BeforeYouBuy product={product} /></div>
 
-          {/* CONTENU + COMPATIBILITÉ */}
-          <section className="container-app grid gap-8 py-14 sm:py-20 lg:grid-cols-2">
-            <Reveal>
-              <div className="card-soft h-full p-8">
-                <div className="flex items-center gap-3">
-                  <FileSpreadsheet className="h-6 w-6 text-[#3B6B4C]" />
-                  <h2 className="font-serif text-2xl font-semibold text-[#1E3A2B]">Ce que vous recevez</h2>
-                </div>
-                <ul className="mt-6 space-y-3">
-                  {(product.contents || []).map((c) => (
-                    <li key={c} className="flex items-start gap-2.5 text-sm text-[#2C332E]">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#3B6B4C]" /> {c}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </Reveal>
-            <Reveal delay={0.1}>
-              <div className="card-soft h-full p-8">
-                <h2 className="font-serif text-2xl font-semibold text-[#1E3A2B]">Compatibilité</h2>
-                <ul className="mt-6 space-y-3">
-                  {(product.compatibility || []).map((c) => (
-                    <li key={c} className="flex items-start gap-2.5 text-sm text-[#2C332E]">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#3B6B4C]" /> {c}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-6 rounded-xl bg-[#EAF0EC] p-4 text-sm text-[#2C332E]">
-                  Après paiement, vous recevez un lien de téléchargement sécurisé, valable immédiatement et par e-mail.
-                </p>
-              </div>
-            </Reveal>
-          </section>
+          <Testimonials place="product" product={product.slug} />
 
           {/* FAQ PRODUIT */}
           {(product.faq || []).length > 0 && (
@@ -287,7 +228,7 @@ export default function ProductDetail() {
                     </>
                   ) : (
                     <>
-                      <p className="mt-4 font-serif text-2xl text-[#D4A359]">{formatPrice(product.price, product.currency)}</p>
+                      <p className="mt-4"><PriceTag product={product} dark testid="final-price" /></p>
                       <div className="flex justify-center">
                         <WithdrawalConsent id="withdrawal-consent-final" checked={waiver} onChange={setWaiver} dark />
                       </div>
@@ -308,34 +249,6 @@ export default function ProductDetail() {
           </section>
       </>
 
-      {/* LIGHTBOX */}
-      {lightbox !== null && gallery[lightbox] && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#1E3A2B]/80 p-4 backdrop-blur-sm" onClick={() => setLightbox(null)} role="dialog" aria-modal="true" aria-label={gallery[lightbox].caption || "Aperçu de la galerie"} data-testid="lightbox">
-          <button autoFocus className="absolute right-5 top-5 text-white/80 hover:text-white" onClick={() => setLightbox(null)} aria-label="Fermer" data-testid="lightbox-close-btn"><X className="h-8 w-8" /></button>
-          <button className="absolute left-4 text-white/80 hover:text-white" onClick={(e) => { e.stopPropagation(); setLightbox((lightbox - 1 + gallery.length) % gallery.length); }} aria-label="Précédent"><ChevronLeft className="h-10 w-10" /></button>
-          <div
-            className="flex flex-col items-center"
-            style={{ width: "min(90vw, calc(85vh * 16 / 11))" }}
-            onClick={(e) => e.stopPropagation()}
-            data-testid="lightbox-content"
-          >
-            {galleryUrl(gallery[lightbox]) ? (
-              <img
-                src={galleryUrl(gallery[lightbox])}
-                alt={gallery[lightbox].caption || "Capture du produit"}
-                data-testid="lightbox-image"
-                className="aspect-[16/11] w-full rounded-xl border border-white/15 bg-white object-contain shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]"
-              />
-            ) : (
-              <Screenshot caption={gallery[lightbox].caption} ratio="aspect-[16/11]" className="w-full" />
-            )}
-            {gallery[lightbox].caption && (
-              <p className="mt-4 text-center font-serif text-lg text-white">{gallery[lightbox].caption}</p>
-            )}
-          </div>
-          <button className="absolute right-4 text-white/80 hover:text-white" onClick={(e) => { e.stopPropagation(); setLightbox((lightbox + 1) % gallery.length); }} aria-label="Suivant"><ChevronRight className="h-10 w-10" /></button>
-        </div>
-      )}
     </>
   );
 }

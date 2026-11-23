@@ -26,6 +26,7 @@ from stripe_keys import select_stripe_keys, preflight_new_live, LIVE_ACCOUNT_ID
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from download_renewal import router as renewal_router, admin_view as download_admin_view
+from merch import router as merch_router, pricing_of, reassurance_for, promo_status
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
@@ -245,6 +246,10 @@ class ProductUpdateInput(BaseModel):
     seo: Optional[dict] = None
     gallery: Optional[List[dict]] = None
     main_image: Optional[str] = None
+    benefits: Optional[List[dict]] = None
+    practical: Optional[dict] = None
+    reassurance_hidden: Optional[List[str]] = None
+    reassurance_extra: Optional[List[dict]] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -277,6 +282,9 @@ def with_purchasable(p):
         p["purchasable"] = not commercial_issues(p)
         p["lookup_key"] = lookup_of(p)
         p["currency"] = effective_currency(p, warn=True)
+        p["pricing"] = pricing_of(p)
+        p.pop("promotion", None)
+        p["download_terms"] = {"days": DOWNLOAD_TTL_DAYS, "limit": DOWNLOAD_LIMIT}
     return p
 
 
@@ -294,11 +302,12 @@ async def get_products(category: Optional[str] = None, q: Optional[str] = None, 
     # available first, then coming_soon
     order = {"available": 0, "coming_soon": 1}
     items.sort(key=lambda p: (order.get(p.get("status"), 2), p.get("name", "")))
+    items = [with_purchasable(p) for p in items]
     if sort == "price_asc":
-        items.sort(key=lambda p: p.get("price") or 9999)
+        items.sort(key=lambda p: p["pricing"]["final"] or 9999)
     elif sort == "price_desc":
-        items.sort(key=lambda p: p.get("price") or -1, reverse=True)
-    return [with_purchasable(p) for p in items]
+        items.sort(key=lambda p: p["pricing"]["final"] or -1, reverse=True)
+    return items
 
 
 @api.get("/products/{slug}")
@@ -306,6 +315,7 @@ async def get_product(slug: str):
     p = await db.products.find_one({"slug": slug}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Produit introuvable")
+    p["reassurance"] = await reassurance_for(p)
     return with_purchasable(p)
 
 
@@ -393,12 +403,50 @@ async def contact(request: Request, inp: ContactInput):
 # Media (images publiques servies par le backend, jamais d'URL storage exposée)
 # --------------------------------------------------------------------------- #
 @api.get("/media/{path:path}")
-async def media(path: str):
+async def media(path: str, request: Request):
     record = await db.media.find_one({"storage_path": path, "is_deleted": False})
     if not record:
         raise HTTPException(404, "Fichier introuvable")
-    data, ct = get_object(path)
-    return Response(content=data, media_type=record.get("content_type", ct))
+    ct = record.get("content_type") or ""
+    if ct.startswith("video/"):
+        return _video_response(path, ct, request.headers.get("range"))
+    data, ct2 = get_object(path)
+    return Response(content=data, media_type=ct or ct2)
+
+
+VIDEO_CACHE = "/tmp/auben_video_cache"
+
+
+def _video_response(path: str, ct: str, rng: Optional[str]):
+    # Vidéos : cache disque + requêtes partielles (Range), indispensables à la lecture sur iPhone et au déplacement.
+    local = os.path.join(VIDEO_CACHE, re.sub(r"[^A-Za-z0-9._-]", "_", path))
+    if not os.path.exists(local):
+        os.makedirs(VIDEO_CACHE, exist_ok=True)
+        data, _ = get_object(path)
+        tmp = f"{local}.{uuid.uuid4().hex}"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, local)
+    size = os.path.getsize(local)
+    headers = {"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"}
+    m = re.match(r"bytes=(\d*)-(\d*)$", (rng or "").strip())
+    if not m or (not m.group(1) and not m.group(2)):
+        start, end, status = 0, size - 1, 200
+    else:
+        if m.group(1):
+            start = int(m.group(1))
+            end = min(int(m.group(2)) if m.group(2) else size - 1, size - 1)
+        else:
+            start, end = max(size - int(m.group(2)), 0), size - 1
+        if start >= size or start > end:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        end = min(end, start + 4 * 1024 * 1024 - 1)
+        status = 206
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    with open(local, "rb") as f:
+        f.seek(start)
+        chunk = f.read(end - start + 1)
+    return Response(content=chunk, status_code=status, media_type=ct, headers=headers)
 
 
 # --------------------------------------------------------------------------- #
@@ -482,6 +530,21 @@ async def ensure_stripe_catalog():
         logger.error(f"Stripe catalog check failed: {type(e).__name__}")
 
 
+def promo_coupon(price, discount_cents: int) -> str:
+    """Coupon Stripe à montant fixe (calculé serveur), limité au produit ; le prix catalogue n'est jamais modifié."""
+    product_id = _prod_id(price)
+    cid = f"auben_{price.lookup_key}_{price.currency}_{discount_cents}"
+    try:
+        c = stripe.Coupon.retrieve(cid, expand=["applies_to"])
+    except stripe.error.InvalidRequestError:
+        c = stripe.Coupon.create(id=cid, amount_off=discount_cents, currency=price.currency, duration="once",
+                                 applies_to={"products": [product_id]}, name="Promotion La Maison d'Auben", expand=["applies_to"])
+        logger.info(f"Stripe : coupon promotionnel créé ({cid})")
+    if c.amount_off != discount_cents or c.currency != price.currency or product_id not in ((c.get("applies_to") or {}).get("products") or []):
+        raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
+    return c.id
+
+
 @api.post("/payments/checkout")
 async def create_checkout(request: Request, req: CheckoutInput):
     check_rate(request, "checkout", 20)
@@ -512,6 +575,9 @@ async def create_checkout(request: Request, req: CheckoutInput):
     if not prices or prices[0].unit_amount != expected:
         raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
     price = prices[0]
+    pricing = pricing_of(product)
+    charged = int(round(pricing["final"] * 100))
+    discounts = [{"coupon": promo_coupon(price, pricing["discount_cents"])}] if pricing["active"] else None
     # SÉCURITÉ : ne jamais utiliser l'origin_url fourni par le client pour des URLs sensibles.
     base = PUBLIC_BASE_URL
     kwargs = dict(
@@ -521,8 +587,11 @@ async def create_checkout(request: Request, req: CheckoutInput):
         cancel_url=f"{base}/paiement/annule",
         metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else "",
                   "withdrawal_consent_version": WITHDRAWAL_CONSENT_VERSION,
-                  "withdrawal_consent_at": withdrawal_consent["accepted_at"]},
+                  "withdrawal_consent_at": withdrawal_consent["accepted_at"],
+                  "promo_discount_cents": str(pricing.get("discount_cents", 0))},
     )
+    if discounts:
+        kwargs["discounts"] = discounts
     try:
         session = stripe.checkout.Session.create(**kwargs, managed_payments={"enabled": True})
     except stripe.error.InvalidRequestError as e:
@@ -534,10 +603,19 @@ async def create_checkout(request: Request, req: CheckoutInput):
         else:
             logger.error(f"Checkout Stripe error for {req.lookup_key}: {type(e).__name__} code={e.code} msg={e.user_message}")
             raise HTTPException(502, "Paiement momentanément indisponible. Réessayez.")
+    # Le montant facturé par Stripe doit être exactement celui affiché (prix ou prix promotionnel serveur).
+    if session.amount_total != charged:
+        logger.error(f"Checkout {req.lookup_key} : montant Stripe {session.amount_total} ≠ affiché {charged}, session expirée")
+        try:
+            stripe.checkout.Session.expire(session.id)
+        except stripe.error.StripeError:
+            pass
+        raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
     await db.payment_transactions.insert_one({
         "session_id": session.id, "lookup_key": req.lookup_key,
         "product_slug": product["slug"] if product else "",
-        "amount": (price.unit_amount or 0) / 100.0, "currency": price.currency,
+        "amount": charged / 100.0, "currency": price.currency,
+        "base_amount": (price.unit_amount or 0) / 100.0, "discount": pricing.get("discount_cents", 0) / 100.0,
         "status": "initiated", "payment_status": "pending",
         "withdrawal_consent": withdrawal_consent,
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -1000,6 +1078,8 @@ async def _product_health(p: dict) -> dict:
         warnings.append("Référence Stripe absente en base (déduite du slug).")
     if not p.get("currency"):
         warnings.append("Devise absente en base (« eur » utilisée par défaut).")
+    if promo_status(p) == "invalid":
+        warnings.append("Promotion activée mais invalide avec le prix actuel : le prix normal reste affiché et facturé.")
     key = effective_lookup(p)
     if key and len(await lookup_owners(db, key)) > 1:
         issues.append({"code": "duplicate", "message": f"Référence Stripe « {key} » utilisée par plusieurs produits."})
@@ -1189,6 +1269,7 @@ api.include_router(content_router)
 api.include_router(contact_router)
 api.include_router(renewal_router)
 app.include_router(api)
+app.include_router(merch_router)
 
 
 @app.middleware("http")

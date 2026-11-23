@@ -35,8 +35,8 @@ export default function Boutique() {
     }
     const order = { available: 0, coming_soon: 1 };
     list.sort((a, b) => (order[a.status] ?? 2) - (order[b.status] ?? 2));
-    if (sort === "price_asc") list.sort((a, b) => (a.price ?? 9999) - (b.price ?? 9999));
-    if (sort === "price_desc") list.sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
+    if (sort === "price_asc") list.sort((a, b) => (a.pricing?.final ?? a.price ?? 9999) - (b.pricing?.final ?? b.price ?? 9999));
+    if (sort === "price_desc") list.sort((a, b) => (b.pricing?.final ?? b.price ?? -1) - (a.pricing?.final ?? a.price ?? -1));
     return list;
   }, [products, activeCat, q, sort]);
 

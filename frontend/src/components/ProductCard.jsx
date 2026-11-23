@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Screenshot } from "@/components/Screenshot";
 import { Icon } from "@/components/Icon";
-import { formatPrice, t } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
+import { PriceTag } from "@/components/PriceTag";
 import { mediaUrl } from "@/lib/api";
 
 export const ProductCard = ({ product, category }) => {
@@ -17,6 +18,9 @@ export const ProductCard = ({ product, category }) => {
       <div className="relative p-3">
         <Screenshot url={img} caption={product.name} icon={category?.icon || "Sparkles"} ratio="aspect-[16/11]" />
         <div className="absolute left-5 top-5 flex gap-2">
+          {product.pricing?.active && !coming && (
+            <span className="rounded-full bg-[#D4A359] px-3 py-1 text-xs font-semibold text-[#1E3A2B]" data-testid={`product-card-promo-${product.slug}`}>Promotion {product.pricing.label}</span>
+          )}
           {product.badge && !coming && (
             <span className="rounded-full bg-[#1E3A2B] px-3 py-1 text-xs font-semibold text-[#FAF8F5]">{product.badge}</span>
           )}
@@ -37,7 +41,7 @@ export const ProductCard = ({ product, category }) => {
           {coming ? (
             <span className="text-sm font-medium text-[#87A987]">Bientôt</span>
           ) : (
-            <span className="font-serif text-xl font-bold text-[#1E3A2B]">{formatPrice(product.price, product.currency)}</span>
+            <PriceTag product={product} size="sm" testid={`product-card-price-${product.slug}`} />
           )}
           {coming ? (
             <Link

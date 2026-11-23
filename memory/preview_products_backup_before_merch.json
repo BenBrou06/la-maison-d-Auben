@@ -1,0 +1,147 @@
+{
+ "budget-mensuel": {
+  "slug": "budget-mensuel",
+  "gallery": [
+   {
+    "key": "dashboard",
+    "caption": "Tableau de bord",
+    "placeholder": true
+   },
+   {
+    "key": "revenus",
+    "caption": "Revenus",
+    "placeholder": true
+   },
+   {
+    "key": "depenses",
+    "caption": "Dépenses",
+    "placeholder": true
+   },
+   {
+    "key": "historique",
+    "caption": "Historique des opérations",
+    "placeholder": true
+   },
+   {
+    "key": "analyse",
+    "caption": "Analyse du budget",
+    "placeholder": true
+   },
+   {
+    "key": "graphiques",
+    "caption": "Graphiques",
+    "placeholder": true
+   }
+  ],
+  "main_image": "maison-auben/images/ef2a9f95-8614-482f-bfb2-af487936ee56.png",
+  "promotion": {
+   "enabled": false,
+   "type": "percent",
+   "value": 20.0,
+   "starts_at": null,
+   "ends_at": null,
+   "updated_at": "2026-11-23T14:14:42.900661+00:00"
+  }
+ },
+ "travel-manager": {
+  "slug": "travel-manager",
+  "gallery": [
+   {
+    "key": "slot-0",
+    "caption": "Itinéraire",
+    "placeholder": true
+   },
+   {
+    "key": "slot-1",
+    "caption": "Budget voyage",
+    "placeholder": true
+   },
+   {
+    "key": "slot-2",
+    "caption": "Checklist bagages",
+    "placeholder": true
+   }
+  ]
+ },
+ "car-cost": {
+  "slug": "car-cost",
+  "gallery": [
+   {
+    "key": "slot-0",
+    "caption": "Coût total",
+    "placeholder": true
+   },
+   {
+    "key": "slot-1",
+    "caption": "Carburant & entretien",
+    "placeholder": true
+   },
+   {
+    "key": "slot-2",
+    "caption": "Comparaison",
+    "placeholder": true
+   }
+  ]
+ },
+ "first-apartment": {
+  "slug": "first-apartment",
+  "gallery": [
+   {
+    "key": "slot-0",
+    "caption": "Budget d'installation",
+    "placeholder": true
+   },
+   {
+    "key": "slot-1",
+    "caption": "Checklist",
+    "placeholder": true
+   },
+   {
+    "key": "slot-2",
+    "caption": "Charges",
+    "placeholder": true
+   }
+  ]
+ },
+ "budget-couple": {
+  "slug": "budget-couple",
+  "gallery": [
+   {
+    "key": "slot-0",
+    "caption": "Dépenses communes",
+    "placeholder": true
+   },
+   {
+    "key": "slot-1",
+    "caption": "Répartition",
+    "placeholder": true
+   },
+   {
+    "key": "slot-2",
+    "caption": "Projets",
+    "placeholder": true
+   }
+  ],
+  "main_image": ""
+ },
+ "suivi-sportif": {
+  "slug": "suivi-sportif",
+  "gallery": [
+   {
+    "key": "slot-0",
+    "caption": "Programme",
+    "placeholder": true
+   },
+   {
+    "key": "slot-1",
+    "caption": "Progression",
+    "placeholder": true
+   },
+   {
+    "key": "slot-2",
+    "caption": "Suivi santé",
+    "placeholder": true
+   }
+  ]
+ }
+}

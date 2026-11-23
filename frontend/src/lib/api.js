@@ -81,3 +81,27 @@ export const adminUploadImage = (file) => {
   fd.append("file", file);
   return api.post("/admin/upload/image", fd).then((r) => r.data);
 };
+
+// Valorisation commerciale
+export const getTestimonials = (place, product = "") => api.get("/testimonials", { params: { place, product } }).then((r) => r.data);
+export const adminGetPromotion = (slug) => api.get(`/admin/products/${slug}/promotion`).then((r) => r.data);
+export const adminSavePromotion = (slug, payload) => api.put(`/admin/products/${slug}/promotion`, payload).then((r) => r.data);
+export const adminReassurance = () => api.get("/admin/reassurance").then((r) => r.data);
+export const adminSaveReassurance = (items) => api.put("/admin/reassurance", { items }).then((r) => r.data);
+export const adminTestimonials = () => api.get("/admin/testimonials").then((r) => r.data);
+export const adminTestimonialSettings = (payload) => api.put("/admin/testimonials/settings", payload).then((r) => r.data);
+export const adminSaveTestimonial = (id, payload) => (id ? api.put(`/admin/testimonials/${id}`, payload) : api.post("/admin/testimonials", payload)).then((r) => r.data);
+export const adminDeleteTestimonial = (id) => api.delete(`/admin/testimonials/${id}`).then((r) => r.data);
+export const adminReorderTestimonials = (ids) => api.post("/admin/testimonials/reorder", { ids }).then((r) => r.data);
+
+// Vidéo : envoi par morceaux (onProgress reçoit 0..1)
+export const adminUploadVideo = async (file, onProgress) => {
+  const { data: init } = await api.post("/admin/upload/video/init", { filename: file.name, size: file.size });
+  for (let i = 0, n = 0; i < file.size; i += init.chunk_size, n += 1) {
+    await api.put(`/admin/upload/video/${init.upload_id}/chunk`, file.slice(i, i + init.chunk_size), {
+      params: { index: n }, headers: { "Content-Type": "application/octet-stream" },
+    });
+    if (onProgress) onProgress(Math.min(1, (i + init.chunk_size) / file.size));
+  }
+  return (await api.post(`/admin/upload/video/${init.upload_id}/complete`)).data;
+};

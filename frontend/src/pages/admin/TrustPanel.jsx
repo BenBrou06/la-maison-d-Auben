@@ -114,7 +114,7 @@ function TestimonialsAdmin() {
   if (!data) return null;
   const st = data.settings;
   const items = data.items;
-  const saveSettings = async (patch) => { await adminTestimonialSettings({ ...st, ...patch }); refresh(); toast.success("Réglage enregistré."); };
+  const saveSettings = async (patch) => { qc.setQueryData(["admin-testimonials"], (d) => ({ ...d, settings: { ...d.settings, ...patch } })); await adminTestimonialSettings({ ...st, ...patch }); refresh(); toast.success("Réglage enregistré."); };
   const published = items.filter((t) => t.authentic && t.published).length;
   return (
     <div className="rounded-xl border border-[#E2DDD5] bg-white p-5" data-testid="testimonials-admin">

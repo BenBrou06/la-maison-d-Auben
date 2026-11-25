@@ -225,6 +225,8 @@ def _public_t(t: dict) -> dict:
 
 @router.get("/testimonials")
 async def public_testimonials(place: str = "home", product: str = ""):
+    if place not in ("home", "product"):
+        raise HTTPException(400, "Emplacement inconnu.")
     s = await _t_settings()
     if not s["enabled"] or (place == "home" and not s["show_home"]) or (place == "product" and not s["show_products"]):
         return []
@@ -310,6 +312,14 @@ def _looks_like_video(head: bytes, ext: str) -> bool:
     return head[4:8] == b"ftyp" if ext == "mp4" else head[:4] == b"\x1a\x45\xdf\xa3"
 
 
+async def _purge_stale_uploads():
+    # Envois abandonnés depuis plus d'une heure : suppression des morceaux temporaires.
+    cutoff = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() - 3600, timezone.utc).isoformat()
+    async for up in db.video_uploads.find({"created_at": {"$lt": cutoff}}, {"_id": 0, "id": 1}):
+        shutil.rmtree(os.path.join(UPLOAD_DIR, up["id"]), ignore_errors=True)
+        await db.video_uploads.delete_one({"id": up["id"]})
+
+
 @router.post("/admin/upload/video/init")
 async def video_init(inp: VideoInit, admin=Depends(get_current_admin)):
     ext = _ext(inp.filename)
@@ -319,6 +329,7 @@ async def video_init(inp: VideoInit, admin=Depends(get_current_admin)):
         raise HTTPException(400, "Fichier vide.")
     if inp.size > MAX_VIDEO_BYTES:
         raise HTTPException(400, f"Vidéo trop lourde ({inp.size / 1048576:.0f} Mo). Taille maximale : {MAX_VIDEO_BYTES // 1048576} Mo. Raccourcissez-la ou réduisez sa résolution.")
+    await _purge_stale_uploads()
     uid = uuid.uuid4().hex
     os.makedirs(os.path.join(UPLOAD_DIR, uid), exist_ok=True)
     await db.video_uploads.insert_one({"id": uid, "ext": ext, "size": inp.size, "filename": inp.filename,

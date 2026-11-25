@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight, Expand, Play, X } from "lucide-react";
 import { mediaUrl } from "@/lib/api";
@@ -124,7 +125,8 @@ export const MediaCarousel = ({ media }) => {
       </div>
       <p className="mt-3 min-h-[1.5rem] text-center font-serif text-base text-[#1E3A2B]" data-testid="carousel-caption">{current?.caption || ""}</p>
       {media.length > 1 && <Thumbs media={media} selected={selected} onPick={(i) => embla && embla.scrollTo(i)} />}
-      {zoom !== null && images[zoom] && <Lightbox media={images} index={zoom} onClose={close} onMove={moveZoom} />}
+      {/* Portail : le parent "sticky" crée un contexte d'empilement, sinon l'en-tête (z-50) recouvre la visionneuse. */}
+      {zoom !== null && images[zoom] && createPortal(<Lightbox media={images} index={zoom} onClose={close} onMove={moveZoom} />, document.body)}
     </div>
   );
 };

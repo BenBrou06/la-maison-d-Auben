@@ -417,6 +417,17 @@ async def media(path: str, request: Request):
 VIDEO_CACHE = "/tmp/auben_video_cache"
 
 
+def _trim_video_cache(keep: str, max_bytes: int = 600 * 1024 * 1024):
+    files = sorted((os.path.join(VIDEO_CACHE, f) for f in os.listdir(VIDEO_CACHE)), key=os.path.getmtime)
+    total = sum(os.path.getsize(f) for f in files)
+    for f in files:
+        if total <= max_bytes:
+            break
+        if f != keep:
+            total -= os.path.getsize(f)
+            os.remove(f)
+
+
 def _video_response(path: str, ct: str, rng: Optional[str]):
     # Vidéos : cache disque + requêtes partielles (Range), indispensables à la lecture sur iPhone et au déplacement.
     local = os.path.join(VIDEO_CACHE, re.sub(r"[^A-Za-z0-9._-]", "_", path))
@@ -427,6 +438,7 @@ def _video_response(path: str, ct: str, rng: Optional[str]):
         with open(tmp, "wb") as f:
             f.write(data)
         os.replace(tmp, local)
+        _trim_video_cache(local)
     size = os.path.getsize(local)
     headers = {"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"}
     m = re.match(r"bytes=(\d*)-(\d*)$", (rng or "").strip())

@@ -1,0 +1,47 @@
+{
+  "summary": "Tested the new merch features from end to end (backend and frontend) in Preview with Stripe TEST only. Backend: 28/28 new tests pass. They cover public pricing (no raw promotion exposed), promotion validation and status cycle (scheduled/expired/off/active), Stripe checkout with promotion (amount_total 559, subtotal 699, coupon auben_budget_mensuel_eur_140, lookup Price unchanged, transaction amount 5.59/base 6.99/discount 1.4), checkout without promotion (699), ignored client amount fields, reassurance validation and per-product hidden/extra items, the full testimonials lifecycle with authenticity rules and no source_note leak, and chunked video upload (format, 80 Mo limit, sniffing, Range 206/416). Frontend: carousel (arrows, counter, thumbs, captions, lightbox next/prev/Escape, video controls/preload=none/poster/no autoplay, pause on navigation, drag swipe on mobile), promo pricing on the product page, shop card, home and final CTA, key-facts, reassurance strip and section, benefits, before-you-buy, the buy flow to checkout.stripe.com (cs_test, EUR 5.59 with 'Promotion' -1.40), admin Promotion block (live preview, invalid message, date error toast, scheduled status), admin Contenu produits (add image and video with progress and auto poster, caption, reorder, benefit, practical info, reassurance hide and extra, save then shown on the public page), Confiance tab (reassurance edit and empty-title error, testimonials toggles/add/edit/delete, public display only when enabled, authentic and published). One critical UI bug was found and fixed: the lightbox close button was covered by the header.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/testimonials", "issue": "Any place value other than home/product (e.g. place=foo) skips the place checks and returns all published testimonials. Harmless, but should be validated."},
+      {"endpoint": "POST /api/admin/upload/video/init", "issue": "Uploads that are started but never completed leave video_uploads docs and /tmp/auben_video_uploads/<id> folders that are never cleaned up. /tmp/auben_video_cache also grows without limit. video_complete reads up to 80 Mo into memory."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "MediaCarousel Lightbox", "issue": "FIXED by testing agent. The lightbox was rendered inside the lg:sticky column, and position:sticky creates its own stacking context. So z-[80] did not help: the header (z-50) covered the top of the lightbox and the close button (top-5 right-5) could not be clicked. Escape and clicking the backdrop still worked. Fix: render the Lightbox with createPortal(..., document.body). Verified: close button clickable.", "selector": "[data-testid='lightbox-close-btn']", "priority": "HIGH"},
+      {"component": "LaptopMockup (Screenshot.jsx) on product pages without media", "issue": "Horizontal overflow on /boutique/suivi-sportif: scrollWidth 397 at 390px and 790 at 768px. Cause: the laptop base div uses w-[112%] -translate-x-[5%]. Add overflow-hidden on the wrapper or keep the base within 100% on small screens.", "selector": "components/Screenshot.jsx:40", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Product page budget-mensuel", "issues": [
+        "The main product image (first slide and lightbox) itself shows 'Utilisation à vie / Mises à jour incluses' and 'Paiement 100 % sécurisé – Par carte ou PayPal'. This contradicts the 'no false promises' rule ('updates' disabled by default). PayPal was not offered in the Stripe TEST checkout (Card, Apple Pay, Link). The user should check or replace this visual.",
+        "The reassurance-strip under the buy button repeats the first 3 items of reassurance-section right below it. Consider varying the content or removing one of them.",
+        "The first slide (main image) has no caption, so the caption line stays empty. That is fine, but a default caption such as the product name would look more finished."
+      ]},
+      {"screen": "Admin Produits > Promotion", "issues": ["Start/end dates use the native browser datetime-local picker (mm/dd/yyyy in an EN browser) instead of a localized shadcn-style picker."]},
+      {"screen": "Admin Confiance > Témoignages", "issues": ["The settings checkboxes are controlled by server data only: a click shows the new state only after the PUT and refetch finish (about 0.5-1 s). With no optimistic update, a fast double click can toggle the setting back."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_merch_features.py", "/app/backend/tests/test_merch_pricing.py", "/app/test_reports/pytest/pytest_merch.xml", "/app/test_reports/pytest/pytest_all.xml"],
+  "action_items": [
+    "Fix the horizontal overflow of LaptopMockup (w-[112%]) on product pages without gallery media at 390px and 768px.",
+    "Review the main product image of budget-mensuel: it promises 'Mises à jour incluses', 'Utilisation à vie' and 'PayPal'.",
+    "Optional: validate the place parameter on /api/testimonials. Add cleanup for abandoned video uploads and a cap on the video cache.",
+    "Optional: update the testimonial settings toggles immediately on click (optimistic update)."
+  ],
+  "critical_code_review_comments": [
+    "merch.py pricing is correct: computed only on the server, with percent rounding (base*(100-v)+50)//100, the 0,50 € minimum and the start/end window. checkout checks session.amount_total == charged and expires the session when they differ. The coupon is a fixed amount restricted to the Stripe product, and the catalog Price is never modified.",
+    "with_purchasable removes promotion from public payloads. The admin list relies on GET /admin/products/{slug}/promotion, which is fine.",
+    "Stripe Checkout in TEST shows Adaptive Pricing (USD $6.35 selected by default for a US browser, EUR 5.59 also offered). This was already the case before. The EUR amount matches the site.",
+    "Legacy test tests/test_site_content_edge.py::TestArticleValidation::test_cover_image fails on 3 parametrized cases with 404 'Article introuvable'. The test depends on an article created by another class (order-dependent); this is not caused by the merch feature.",
+    "tests/test_lamaisondauben.py::test_rate_limit_admin_login failed only because this session had already used up admin login attempts (429 after 3). Rerun it later."
+  ],
+  "updated_files": ["/app/frontend/src/components/MediaCarousel.jsx", "/app/backend/tests/test_merch_features.py"],
+  "success_rate": {"backend": "100% of new merch tests (28/28); legacy suite 43/45 (2 failures from test order and the rate-limit window, not from merch)", "frontend": "~95% (1 critical lightbox bug fixed, 1 overflow on the no-media product page)"},
+  "seed_data_creation": "Everything was restored. Promotion: back to active 20 % (percent, value 20, no dates) on budget-mensuel. Content: gallery, benefits, practical and reassurance were restored to their original values through PUT /api/admin/products/budget-mensuel. Before, reassurance_hidden and reassurance_extra were null; they are now [], which behaves the same. Testimonials: settings back to enabled=false, every TEST_ testimonial deleted by id (0 items left). Reassurance: the site_config 'reassurance' document now exists with the same 6 default items (updates disabled). Leftovers: orphan media in storage that no product references (2 TEST demo.mp4 uploads, 1 image, 1 auto poster, plus earlier uploads). Some cs_test_ checkout sessions were created (most expired) with payment_transactions 'initiated' rows. No payment was completed, no prices were changed, no orders were touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the merch tests with: cd /app/backend && /etc/supervisor/emergent-env-exec /root/.venv/bin/pytest tests/test_merch_features.py tests/test_merch_pricing.py -n 0. Use -n 0 because the tests share the promotion state; the emergent-env-exec wrapper provides the Stripe TEST key. The fixture restores the original promotion. Preview: budget-mensuel costs 6.99 with 20 % active (5.59), suivi-sportif costs 4.99. Admin toggles are async controlled checkboxes: use click() and wait, not check().",
+  "rca of the issue": "Lightbox close button not clickable: the Lightbox was a child of the sticky product-media column (ProductDetail 'lg:sticky lg:top-24'). position:sticky creates a stacking context, so the fixed overlay's z-[80] only applied inside it, and the sticky header (z-50) painted over the lightbox. Fixed by rendering the Lightbox in a portal attached to document.body."
+}

@@ -94,7 +94,7 @@ export default function ProductDetail() {
       {/* HERO PRODUIT : visuels + décision d'achat */}
       <section className="container-app grid items-start gap-10 py-8 lg:grid-cols-[1.15fr_1fr] lg:gap-14 lg:py-12">
         <Reveal className="min-w-0 lg:sticky lg:top-24">
-          {media.length ? <MediaCarousel media={media} /> : <HeroVisual url="" caption={product.name} />}
+          {media.length ? <MediaCarousel media={media} /> : <HeroVisual url="" caption={product.name} note={coming ? undefined : ""} />}
           {media.length > 1 && <p className="mt-3 text-center text-xs text-[#87A987]" data-testid="gallery-hint">Découvrez les différentes vues de votre outil.</p>}
         </Reveal>
         <Reveal delay={0.1} className="min-w-0">

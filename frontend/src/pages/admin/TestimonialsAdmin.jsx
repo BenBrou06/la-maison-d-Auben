@@ -31,7 +31,6 @@ const NOTICE = {
   no_email: "Avis refusé ; aucune adresse e-mail : l'auteur ne peut pas être informé.",
   already: "Avis refusé ; l'auteur a déjà été informé d'un refus pour cet avis (pas de nouvel e-mail).",
   skipped_abuse: "Avis refusé sans e-mail (adresse probablement usurpée).",
-  limited: "Avis refusé ; cette adresse a déjà reçu un e-mail de refus il y a moins de 30 jours : pas de nouvel envoi.",
   failed: "Avis refusé, mais l'e-mail à l'auteur n'a pas pu partir.",
 };
 const ABUSE = ["spam", "impersonation"];
@@ -107,7 +106,7 @@ function RejectDialog({ item, reasons, onClose, onDone }) {
         {!canNotify ? <p className={helpCls} data-testid="reject-notice-info">{item?.author_notified_at ? "L'auteur a déjà été informé d'un refus pour cet avis : pas de nouvel e-mail." : "Aucune adresse e-mail : l'auteur ne peut pas être informé."}</p>
           : ABUSE.includes(reason)
             ? <Toggle checked={notify} onChange={setNotify} label="Envoyer quand même le motif par e-mail" hint="Pour un spam ou une usurpation, l'adresse appartient souvent à quelqu'un d'autre : par défaut, aucun e-mail n'est envoyé." testid="reject-notify" />
-            : <p className={helpCls} data-testid="reject-notice-info">Le motif sera envoyé à l'auteur par e-mail (obligation légale) : un seul e-mail par avis, et au plus un par adresse sur 30 jours.</p>}
+            : <p className={helpCls} data-testid="reject-notice-info">Le motif sera envoyé à l'auteur par e-mail (obligation légale), une seule fois pour cet avis.</p>}
         <DialogFooter>
           <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm text-[#626D66] hover:bg-[#FAF8F5]" data-testid="reject-cancel">Annuler</button>
           <button onClick={confirm} disabled={!reason || (reason === "other" && !detail.trim())} data-testid="reject-submit"
@@ -141,7 +140,7 @@ function Row({ t, i, items, products, reasons, reportReasons, onEdit, onReject, 
       {t.source_note && <p className="mt-1 text-xs italic text-[#626D66]">Note interne : {t.source_note}</p>}
       {t.status === "rejected" && t.rejection_reason && <p className="mt-1 text-xs text-[#8A2A1F]">Motif : {reasons[t.rejection_reason]}{t.rejection_detail ? ` — ${t.rejection_detail}` : ""}{t.author_notified_at ? " · auteur informé" : ""}</p>}
       {t.purge_at && <p className="mt-1 text-xs text-[#87A987]">Anonymisation automatique le {day(t.purge_at)} s'il n'est pas publié.</p>}
-      {t.status === "published" && t.unpublish_at && <p className="mt-1 text-xs text-[#87A987]" data-testid={`testimonial-retention-${t.id}`}>Publié le {day(t.published_at)} · e-mail effacé le {t.email_purge_at ? day(t.email_purge_at) : "(déjà effacé)"} · retrait automatique le {day(t.unpublish_at)}.</p>}
+      {t.status === "published" && t.unpublish_at && <p className="mt-1 text-xs text-[#87A987]" data-testid={`testimonial-retention-${t.id}`}>Publié le {day(t.published_at)} · {t.email_purge_at ? `e-mail effacé le ${day(t.email_purge_at)}` : t.email_erased_at ? "e-mail effacé" : "aucune adresse e-mail"} · retrait automatique le {day(t.unpublish_at)}.</p>}
       {t.author_notice && t.status === "rejected" && <p className="mt-1 text-xs text-[#626D66]">{NOTICE[t.author_notice]}</p>}
       {(t.reports || []).length > 0 && (
         <div className="mt-2 rounded-lg bg-[#FBF3E6] p-3 text-xs text-[#7A5520]" data-testid={`testimonial-reports-${t.id}`}>

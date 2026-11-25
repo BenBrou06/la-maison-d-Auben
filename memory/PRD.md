@@ -221,3 +221,11 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - RGPD : non publiés anonymisés 90 j après dernier changement de statut ; invitations expirées supprimées ; politique de confidentialité (legal.js) + note sous le formulaire.
 - Pages : nouvelle page « Donner mon avis » (clé avis) incluant les textes de l'invitation e-mail.
 - Tests : iteration_24 (26/26 backend, front 100 %) + corrections (jeton stable, simulation e-mail refus, verrou produit, text_hash à l'édition, jeton en sessionStorage, carte pleine largeur).
+
+## 2026-11-25 (b) — Avis : ajustements conformité (Preview, non publié)
+- Conservation : non publiés anonymisés 90 j (repli sur created_at si status_changed_at absent) ; e-mail d'un avis publié effacé 12 mois après published_at ; avis publié retiré + anonymisé 3 ans calendaires après publication (motif « expired »).
+- Refus : notification obligatoire du motif (D111-19), une fois par avis ; exception par défaut pour spam/usurpation (envoi au choix) ; plus de limite 30 j. Champ author_notice.
+- Anti-spam persistant : collection rate_hits (empreinte HMAC de l'IP, TTL 24 h), utilisée par formulaire, invitations, signalements.
+- D111-10 à 12 : date de publication + date d'expérience (experience_month, sélecteurs mois/année FR) sur chaque avis ; tri « Les plus récents » (défaut) / « Sélection de la maison » ; mention contrôle/sans contrepartie ; lien « Signaler » (testimonials.reports, 3/h/appareil, admin « Marquer comme examinés ») ; nouvelle page /avis-clients (legal-avis-clients, éditable dans Pages, lien pied de page).
+- « Ben » : absent de Production (vérifié en lecture seule par le deployer ; bases distinctes, aucune copie au redéploiement).
+- Tests : 32 + 6 (test_reviews_testimonials.py, test_reviews_extra.py — à lancer séparément), iteration_25 frontend 100 %.

@@ -382,7 +382,7 @@ class TestComplianceAdjustments:
             assert admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "published"}).json()["item"]["published_at"]
         ago = lambda d: (datetime.now(timezone.utc) - timedelta(days=d)).isoformat()
         mdb.testimonials.update_one({"id": a["id"]}, {"$set": {"published_at": ago(370)}})
-        mdb.testimonials.update_one({"id": b["id"]}, {"$set": {"published_at": ago(3 * 365 + 2)}})
+        mdb.testimonials.update_one({"id": b["id"]}, {"$set": {"published_at": ago(3 * 366 + 1)}})
         x, y = item(admin, a["id"]), item(admin, b["id"])
         assert x["status"] == "published" and x["email"] == "" and x["text"] and x["email_erased_at"]
         assert y["status"] == "rejected" and y["rejection_reason"] == "expired" and y["anonymized_at"] and y["text"] == ""
@@ -393,7 +393,7 @@ class TestComplianceAdjustments:
         r = admin.put(f"{API}/admin/testimonials/{t1['id']}/status", json={"status": "rejected", "reason": "off_topic"})
         assert r.json()["notice"] == "simulated"  # obligatoire, sans case à cocher
         r = admin.put(f"{API}/admin/testimonials/{t2['id']}/status", json={"status": "rejected", "reason": "off_topic"})
-        assert r.json()["notice"] == "limited"  # même adresse < 30 jours
+        assert r.json()["notice"] == "simulated"  # chaque refus légitime est notifié (un e-mail par avis)
         r = admin.put(f"{API}/admin/testimonials/{t3['id']}/status", json={"status": "rejected", "reason": "spam"})
         assert r.json()["notice"] == "skipped_abuse"
         assert admin.put(f"{API}/admin/testimonials/{t3['id']}/status", json={"status": "rejected", "reason": "expired"}).status_code == 400

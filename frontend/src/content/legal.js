@@ -214,7 +214,7 @@ export const LEGAL_PAGES = {
       },
       {
         h: "Motifs de refus",
-        p: "Un avis peut être refusé uniquement pour l'un des motifs suivants. Tout refus est notifié à son auteur par e-mail, avec son motif.",
+        p: "Un avis peut être refusé uniquement pour l'un des motifs suivants. Tout refus est notifié à son auteur par e-mail, avec son motif, une seule fois par avis. Exception : lorsqu'un avis est refusé comme spam ou usurpation d'identité, l'adresse indiquée appartient souvent à une autre personne ; dans ce cas, aucun e-mail n'est envoyé automatiquement afin de ne pas solliciter un tiers.",
         list: [
           "Contenu publicitaire ou automatisé (spam).",
           "Témoignage qui ne paraît pas authentique, ou usurpation d'identité.",

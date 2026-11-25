@@ -9,7 +9,31 @@ import { useContent, InlineText } from "@/lib/content";
 
 const field = "w-full rounded-xl border border-[#E2DDD5] bg-white px-4 py-3 text-[#2C332E] placeholder-[#626D66]/60 focus:outline-none focus:ring-2 focus:ring-[#87A987]";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const THIS_MONTH = new Date().toISOString().slice(0, 7);
+const NOW = new Date();
+const THIS_MONTH = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, "0")}`; // heure locale
+const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const YEARS = Array.from({ length: NOW.getFullYear() - 2014 }, (_, i) => NOW.getFullYear() - i);
+const small = "rounded-xl border border-[#E2DDD5] bg-white px-3 py-2 text-[#2C332E] focus:outline-none focus:ring-2 focus:ring-[#87A987]";
+
+function MonthPicker({ value, onChange }) {
+  const [y, m] = value.split("-");
+  const setPart = (ny, nm) => {
+    let v = `${ny}-${nm}`;
+    if (v > THIS_MONTH) v = THIS_MONTH;
+    onChange(v);
+  };
+  return (
+    <div className="flex items-center gap-2 text-sm text-[#626D66]" role="group" aria-label="Date de votre expérience">
+      <span>Date de votre expérience</span>
+      <select value={m} onChange={(e) => setPart(y, e.target.value)} className={small} aria-label="Mois" data-testid="review-experience-month">
+        {MONTHS.map((l, i) => <option key={l} value={String(i + 1).padStart(2, "0")}>{l}</option>)}
+      </select>
+      <select value={y} onChange={(e) => setPart(e.target.value, m)} className={small} aria-label="Année" data-testid="review-experience-year">
+        {YEARS.map((n) => <option key={n} value={String(n)}>{n}</option>)}
+      </select>
+    </div>
+  );
+}
 
 function StarPicker({ value, onChange }) {
   const [hover, setHover] = useState(0);
@@ -137,11 +161,7 @@ export default function ReviewPage() {
               </div>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <StarPicker value={form.rating} onChange={(v) => set("rating", v)} />
-                <label className="flex items-center gap-2 text-sm text-[#626D66]">
-                  Date de votre expérience
-                  <input type="month" min="2015-01" max={THIS_MONTH} value={form.experience_month} onChange={(e) => set("experience_month", e.target.value)}
-                    className="rounded-xl border border-[#E2DDD5] bg-white px-3 py-2 text-[#2C332E] focus:outline-none focus:ring-2 focus:ring-[#87A987]" data-testid="review-experience" />
-                </label>
+                <MonthPicker value={form.experience_month} onChange={(v) => set("experience_month", v)} />
               </div>
               <div>
                 <textarea maxLength={1500} rows={6} placeholder="Votre témoignage" aria-label="Votre témoignage" value={form.text} onChange={(e) => set("text", e.target.value)} className={field} data-testid="review-text" />

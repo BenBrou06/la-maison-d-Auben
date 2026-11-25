@@ -24,8 +24,7 @@ router = APIRouter(prefix="/api")
 STATUSES = ("pending", "approved", "published", "rejected")
 RETENTION_DAYS = 90          # avis non publiés (en attente, à publier, refusés) : anonymisés ensuite
 EMAIL_DAYS = 365             # adresse e-mail d'un avis publié : effacée 12 mois après publication
-PUBLISHED_DAYS = 3 * 365     # durée maximale d'affichage d'un avis publié, puis retrait et anonymisation
-NOTIFY_COOLDOWN_DAYS = 30    # au plus un e-mail de refus par adresse sur cette période
+PUBLISHED_YEARS = 3          # durée maximale d'affichage d'un avis publié, puis retrait et anonymisation
 NO_DEFAULT_NOTIFY = ("spam", "impersonation")  # adresse probablement usurpée : envoi laissé au choix
 INVITE_DAYS = 180            # validité du lien d'avis envoyé après achat
 CONSENT_VERSION = "avis-v1-2026-11"
@@ -101,6 +100,13 @@ def _ago(days: int) -> str:
     return (_now() - timedelta(days=days)).isoformat()
 
 
+def _add_years(d: datetime, n: int) -> datetime:
+    try:
+        return d.replace(year=d.year + n)
+    except ValueError:  # 29 février
+        return d.replace(year=d.year + n, day=28)
+
+
 async def purge():
     cutoff = _ago(RETENTION_DAYS)
     stale = await db.testimonials.update_many(
@@ -108,7 +114,7 @@ async def purge():
          "$or": [{"status_changed_at": {"$lt": cutoff}}, {"status_changed_at": {"$exists": False}, "created_at": {"$lt": cutoff}}]},
         {"$set": {**ANONYMIZE, "status": "rejected", "anonymized_at": now_iso()}})
     expired = await db.testimonials.update_many(
-        {"status": "published", "published_at": {"$lt": _ago(PUBLISHED_DAYS)}},
+        {"status": "published", "published_at": {"$lt": _add_years(_now(), -PUBLISHED_YEARS).isoformat()}},
         {"$set": {**ANONYMIZE, "status": "rejected", "rejection_reason": "expired", "anonymized_at": now_iso(), "status_changed_at": now_iso()}})
     emails = await db.testimonials.update_many(
         {"status": "published", "published_at": {"$lt": _ago(EMAIL_DAYS)}, "email": {"$nin": ["", None]}},
@@ -344,7 +350,7 @@ def _admin_view(t: dict) -> dict:
     if t["status"] != "published" and not t.get("anonymized_at") and changed:
         t["purge_at"] = plus(changed, RETENTION_DAYS)
     if t["status"] == "published" and t.get("published_at"):
-        t["unpublish_at"] = plus(t["published_at"], PUBLISHED_DAYS)
+        t["unpublish_at"] = _add_years(datetime.fromisoformat(t["published_at"]), PUBLISHED_YEARS).isoformat()
         if t.get("email"):
             t["email_purge_at"] = plus(t["published_at"], EMAIL_DAYS)
     seen = t.get("reports_seen_at") or ""
@@ -464,15 +470,13 @@ async def admin_testimonial_status(tid: str, inp: StatusInput, admin=Depends(get
 
 
 async def _rejection_notice(t: dict, inp: StatusInput) -> str:
-    """Le motif est envoyé à l'auteur (une seule fois par avis, au plus un e-mail par adresse sur 30 jours)."""
+    """Le motif est envoyé à l'auteur (D111-19), une seule fois par avis ; sauf adresse probablement usurpée."""
     if not t.get("email"):
         return "no_email"
     if t.get("author_notified_at"):
         return "already"
     if inp.reason in NO_DEFAULT_NOTIFY and not inp.notify:
         return "skipped_abuse"
-    if await db.testimonials.find_one({"email": t["email"], "author_notified_at": {"$gt": _ago(NOTIFY_COOLDOWN_DAYS)}}, {"_id": 1}):
-        return "limited"
     if not await _notify_rejection(t, inp):
         return "failed"
     return "simulated" if EMAIL_DRY_RUN else "sent"

@@ -1,8 +1,9 @@
 """Témoignages clients : un seul système (admin « Confiance », formulaire public, invitation après achat)."""
 import hashlib
+import hmac
 import logging
+import os
 import re
-import secrets
 import unicodedata
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -15,6 +16,7 @@ from database import db
 from auth import get_current_admin
 from emailer import send_email, review_rejected_html
 from newsletter_admin import DeleteConfirm, require_delete_confirmation
+from contact_admin import DRY_RUN as EMAIL_DRY_RUN  # même simulation que les e-mails de la messagerie (Preview)
 
 logger = logging.getLogger("reviews")
 router = APIRouter(prefix="/api")
@@ -103,19 +105,19 @@ async def email_texts() -> dict:
 
 
 async def create_invite(order: dict, base_url: str) -> dict:
-    """Jeton aléatoire (seul son empreinte est stockée), un par commande et produit, sans accès à la commande."""
+    """Jeton non prévisible (HMAC secret) : identique à chaque renvoi de l'e-mail, seule son empreinte est stockée."""
     slug = order.get("product_slug") or ""
-    link = f"{base_url}/donner-mon-avis?produit={slug}"
     texts = await email_texts()
-    used = await db.review_invites.find_one({"order_id": order["id"], "product_slug": slug, "used_at": {"$ne": None}}, {"_id": 1})
-    if slug and not used:
-        token = secrets.token_urlsafe(32)
-        await db.review_invites.update_one(
-            {"order_id": order["id"], "product_slug": slug},
-            {"$set": {"token_hash": _hash(token), "created_at": now_iso(), "used_at": None,
-                      "expires_at": (_now() + timedelta(days=INVITE_DAYS)).isoformat()}}, upsert=True)
-        link = f"{base_url}/donner-mon-avis?invitation={token}"
-    return {**texts, "url": link}
+    if not slug:
+        return {**texts, "url": f"{base_url}/donner-mon-avis"}
+    if await db.review_invites.find_one({"order_id": order["id"], "product_slug": slug, "used_at": {"$ne": None}}, {"_id": 1}):
+        return {**texts, "url": f"{base_url}/donner-mon-avis?produit={slug}"}
+    token = hmac.new(os.environ["JWT_SECRET"].encode(), f"review-invite:{order['id']}:{slug}".encode(), hashlib.sha256).hexdigest()
+    await db.review_invites.update_one(
+        {"order_id": order["id"], "product_slug": slug},
+        {"$setOnInsert": {"token_hash": _hash(token), "created_at": now_iso(), "used_at": None,
+                          "expires_at": (_now() + timedelta(days=INVITE_DAYS)).isoformat()}}, upsert=True)
+    return {**texts, "url": f"{base_url}/donner-mon-avis?invitation={token}"}
 
 
 async def _invite(token: str) -> dict:
@@ -338,7 +340,9 @@ async def admin_add_testimonial(inp: TestimonialInput, admin=Depends(get_current
 async def admin_update_testimonial(tid: str, inp: TestimonialInput, admin=Depends(get_current_admin)):
     t = await _get(tid)
     d = await _clean(inp)
-    sets = {**d, "updated_at": now_iso()}
+    if t.get("verified_purchase") and (d["kind"], d["product_slug"]) != ("product", t.get("product_slug")):
+        raise HTTPException(400, "Avis « Achat vérifié » : le produit associé est celui de la commande et ne peut pas être changé.")
+    sets = {**d, "text_hash": _hash(_norm_text(d["text"])), "updated_at": now_iso()}
     if not d["authentic"] and status_of(t) in ("approved", "published"):
         sets.update(status="pending", status_changed_at=now_iso())  # plus authentique => retiré du site
     await db.testimonials.update_one({"id": tid}, {"$set": sets})
@@ -347,6 +351,18 @@ async def admin_update_testimonial(tid: str, inp: TestimonialInput, admin=Depend
 
 ALLOWED = {"pending": {"approved", "rejected"}, "approved": {"published", "rejected", "pending"},
            "published": {"approved", "rejected"}, "rejected": {"pending"}}
+
+
+async def _notify_rejection(t: dict, inp: "StatusInput") -> bool:
+    if EMAIL_DRY_RUN:
+        logger.info("Review rejection email SIMULATED (preview)")
+        return True
+    try:
+        return bool(await send_email(to=t["email"], subject="Votre témoignage sur La Maison d'Auben",
+                                     html=review_rejected_html(name=t["name"], reason=REJECT_REASONS[inp.reason], detail=inp.detail.strip())))
+    except Exception as e:
+        logger.error(f"Review rejection email failed: {type(e).__name__}")
+        return False
 
 
 @router.put("/admin/testimonials/{tid}/status")
@@ -368,16 +384,11 @@ async def admin_testimonial_status(tid: str, inp: StatusInput, admin=Depends(get
             raise HTTPException(400, "Indiquez le motif du refus (et précisez-le pour « autre motif »).")
         sets.update(rejection_reason=inp.reason, rejection_detail=inp.detail.strip(), rejected_at=now_iso())
         if inp.notify and t.get("email") and not t.get("author_notified_at"):
-            try:
-                notified = bool(await send_email(to=t["email"], subject="Votre témoignage sur La Maison d'Auben",
-                                                 html=review_rejected_html(name=t["name"], reason=REJECT_REASONS[inp.reason], detail=inp.detail.strip())))
-            except Exception as e:
-                logger.error(f"Review rejection email failed: {type(e).__name__}")
-                notified = False
+            notified = await _notify_rejection(t, inp)
             if notified:
                 sets["author_notified_at"] = now_iso()
     await db.testimonials.update_one({"id": tid}, {"$set": sets})
-    return {"item": _admin_view(await _get(tid)), "notified": notified}
+    return {"item": _admin_view(await _get(tid)), "notified": notified, "simulated": bool(notified) and EMAIL_DRY_RUN}
 
 
 @router.post("/admin/testimonials/{tid}/delete-permanently")

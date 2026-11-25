@@ -43,11 +43,11 @@ function TestimonialForm({ initial, products, onDone }) {
         <div><label className={labelCls}>Nom ou pseudonyme affiché</label><input className={inputCls} value={f.name} onChange={(e) => set("name", e.target.value)} data-testid="testimonial-name" /></div>
         <div><label className={labelCls}>Adresse e-mail du déposant (privée)</label><input className={inputCls} value={f.email || ""} onChange={(e) => set("email", e.target.value)} data-testid="testimonial-email" /></div>
         <div><label className={labelCls}>Type de témoignage</label>
-          <select className={inputCls} value={f.kind} onChange={(e) => set("kind", e.target.value)} data-testid="testimonial-kind">
+          <select className={inputCls} value={f.kind} disabled={!!initial.verified_purchase} onChange={(e) => set("kind", e.target.value)} data-testid="testimonial-kind">
             <option value="product">Avis sur un produit</option><option value="brand">Avis sur La Maison d'Auben</option>
           </select></div>
         {f.kind === "product" && <div><label className={labelCls}>Produit associé</label>
-          <select className={inputCls} value={f.product_slug} onChange={(e) => set("product_slug", e.target.value)} data-testid="testimonial-product">
+          <select className={inputCls} value={f.product_slug} disabled={!!initial.verified_purchase} title={initial.verified_purchase ? "Produit de la commande (achat vérifié)" : undefined} onChange={(e) => set("product_slug", e.target.value)} data-testid="testimonial-product">
             <option value="">Choisissez…</option>{products.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}
           </select></div>}
         <div><label className={labelCls}>Note donnée par le client</label>
@@ -75,7 +75,7 @@ function RejectDialog({ item, reasons, onClose, onDone }) {
   const confirm = async () => {
     try {
       const r = await adminTestimonialStatus(item.id, { status: "rejected", reason, detail, notify: canNotify && notify });
-      toast.success(r.notified ? "Avis refusé, son auteur a été informé du motif." : r.notified === false ? "Avis refusé, mais l'e-mail à l'auteur n'a pas pu partir." : "Avis refusé.");
+      toast.success(r.notified ? `Avis refusé, son auteur a été informé du motif${r.simulated ? " (envoi simulé en Preview)" : ""}.` : r.notified === false ? "Avis refusé, mais l'e-mail à l'auteur n'a pas pu partir." : "Avis refusé.");
       onDone();
     } catch (e) { toast.error(errMsg(e, "Échec du refus.")); }
   };

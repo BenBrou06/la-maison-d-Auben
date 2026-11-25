@@ -216,6 +216,7 @@ class TestReassurance:
 
 
 # ---------- Testimonials ----------
+@pytest.mark.skip(reason="Obsolete: testimonial model moved to status workflow; see tests/test_reviews_testimonials.py")
 class TestTestimonials:
     def test_flow(self, adm):
         orig = adm.get(f"{BASE_URL}/api/admin/testimonials").json()

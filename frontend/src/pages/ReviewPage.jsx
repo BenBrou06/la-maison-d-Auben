@@ -31,7 +31,7 @@ function StarPicker({ value, onChange }) {
 function KindChoice({ kind, setKind, c, locked }) {
   const opts = [["product", Package, c.product_label, c.product_text], ["brand", Heart, c.brand_label, c.brand_text]];
   return (
-    <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Catégorie du témoignage">
+    <div className={`grid gap-3 ${locked ? "" : "sm:grid-cols-2"}`} role="radiogroup" aria-label="Catégorie du témoignage">
       {opts.filter(([k]) => !locked || k === "product").map(([k, Ico, label, text]) => (
         <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)} data-testid={`review-kind-${k}`}
           className={`rounded-2xl border-2 p-4 text-left transition-[border-color,background-color] duration-200 ${kind === k ? "border-[#3B6B4C] bg-[#EAF0EC]" : "border-[#E2DDD5] bg-white hover:border-[#87A987]"}`}>
@@ -53,7 +53,12 @@ const errorText = (e) => {
 export default function ReviewPage() {
   const c = useContent("avis");
   const [params] = useSearchParams();
-  const [token] = useState(params.get("invitation") || "");
+  // Jeton gardé pour l'onglet (session) : un rechargement ne perd pas l'invitation, il n'apparaît plus dans l'adresse.
+  const [token] = useState(() => {
+    const t = params.get("invitation");
+    if (t) sessionStorage.setItem("auben-review-invite", t);
+    return t || (params.get("produit") ? "" : sessionStorage.getItem("auben-review-invite") || "");
+  });
   const [kind, setKind] = useState(params.get("produit") || token ? "product" : "");
   const [form, setForm] = useState({ product_slug: params.get("produit") || "", name: "", email: "", rating: null, text: "", consent: false, website: "" });
   const [invite, setInvite] = useState(null);
@@ -69,7 +74,7 @@ export default function ReviewPage() {
     if (!token) return;
     window.history.replaceState(null, "", window.location.pathname); // le jeton ne reste pas dans la barre d'adresse
     getReviewInvitation(token).then((d) => { setInvite(d); set("product_slug", d.product_slug); })
-      .catch((e) => setInviteError(errorText(e)));
+      .catch((e) => { sessionStorage.removeItem("auben-review-invite"); setInviteError(errorText(e)); });
   }, [token]);
 
   const useInvite = !!invite;
@@ -86,6 +91,7 @@ export default function ReviewPage() {
     try {
       await submitReview({ ...form, kind, email: useInvite ? null : form.email.trim(), invitation: useInvite ? token : "", elapsed_ms: Date.now() - started.current });
       setSent(true);
+      sessionStorage.removeItem("auben-review-invite");
     } catch (err) { setError(errorText(err)); }
     setSending(false);
   };

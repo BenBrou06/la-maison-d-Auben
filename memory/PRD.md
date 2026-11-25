@@ -212,3 +212,12 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - Admin : bloc Promotion dans Produits ; sections Images et vidéos / Bénéfices / Informations pratiques / Réassurance dans Contenu produits ; nouvel onglet Confiance.
 - Tests : iteration_23 (28 nouveaux tests backend + front ~95 %), corrections ensuite : visionneuse, débordement mobile du mockup, « Capture à venir » masqué sur fiche achetable, validation place, purge des envois abandonnés, cache vidéo plafonné. Données Preview restaurées (sauvegarde memory/preview_products_backup_before_merch.json).
 - À signaler : l'image principale de Budget mensuel affiche « Mises à jour incluses / Utilisation à vie / PayPal » (visuel utilisateur, non modifié).
+
+## 2026-11-25 — Avis clients finalisés (Preview uniquement, non publié)
+- Système unique `testimonials` (backend/reviews.py ; testimonials retiré de merch.py). Statuts pending/approved/published/rejected (backfill non destructif de l'ancien booléen published au démarrage). Champs : email privé, kind product|brand, source form|order|admin, verified_purchase, order_id interne, rejection_reason/detail, author_notified_at, consent_at/version, text_hash, status_changed_at, anonymized_at.
+- Formulaire public /donner-mon-avis (ReviewPage.jsx) : piège invisible, délai mini 3 s, 3 envois/10 min + 10/jour par IP, 3/jour par e-mail, doublons (e-mail+produit, texte normalisé). Pas de vérification d'e-mail (choix utilisateur).
+- Après achat : bloc d'invitation en fin d'e-mail de livraison ; jeton HMAC(JWT_SECRET, commande+produit) stable entre renvois, empreinte seule stockée (review_invites), 180 j, usage unique ; e-mail de la commande imposé (indice masqué) ; « Achat vérifié » uniquement par ce jeton ; produit verrouillé en édition admin.
+- Admin Confiance : filtres par statut, actions Valider/Publier/Dépublier/Remettre en attente/Refuser (motif obligatoire, e-mail à l'auteur optionnel, un seul, simulé en Preview via CONTACT_EMAIL_DRY_RUN)/Réexaminer, suppression via ConfirmDeleteDialog « SUPPRIMER ».
+- RGPD : non publiés anonymisés 90 j après dernier changement de statut ; invitations expirées supprimées ; politique de confidentialité (legal.js) + note sous le formulaire.
+- Pages : nouvelle page « Donner mon avis » (clé avis) incluant les textes de l'invitation e-mail.
+- Tests : iteration_24 (26/26 backend, front 100 %) + corrections (jeton stable, simulation e-mail refus, verrou produit, text_hash à l'édition, jeton en sessionStorage, carte pleine largeur).

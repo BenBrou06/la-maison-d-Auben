@@ -1,0 +1,38 @@
+{
+  "summary": "I tested the whole testimonials/reviews feature end to end. That covers the public form, the invitation sent after a purchase, admin moderation, retention/anonymisation, the review block in the delivery email, the 'Pages' content, links, the privacy policy and responsive layout. Backend: a new pytest file with 26 tests, all passing. It covers POST /api/reviews validation (422/400), the honeypot, the duplicate checks (409), the per-email daily limit (429), the per-IP rate limit (429 after 3; the backend is restarted between groups), the invitation flow (masked hint, email/product taken from the order, source=order, verified_purchase=true, second use 409, invalid or expired token 404, no token in the link once used), the email block and _assert_safe_email, the admin status transitions, the required rejection reason, a single notification email, editing and unticking 'authentic', permanent delete with the SUPPRIMER confirmation (old DELETE route gone: 404/405), public field filtering, the settings switches, and 90-day anonymisation (published reviews untouched). Frontend: every flow in the request works in the UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/testimonials/{id}/status (notify=true)", "issue": "The rejection email to the author is not simulated in preview. send_email calls the real Emergent email API (notified=true was returned). There is no DRY_RUN switch for this email, unlike NEWSLETTER_DRY_RUN and CONTACT_EMAIL_DRY_RUN. My test sent it only to a test_*@example.com address."},
+      {"endpoint": "reviews.create_invite", "issue": "Each call replaces the invitation token for that order+product. Resending or retrying the delivery email therefore breaks the link in any email sent earlier."},
+      {"endpoint": "PUT /api/admin/testimonials/{id}", "issue": "An admin can change the product_slug of a review that came from a purchase link while verified_purchase stays true. The 'Achat vérifié' badge would then show on a product the person did not buy. Editing also does not recompute text_hash, so the duplicate check keeps using the original text."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Invitation landing", "issue": "The token is removed from the address bar and kept only in React state. Reloading the page drops the invitation and shows the normal form, so the review loses 'Achat vérifié'. Consider keeping the token in sessionStorage.", "affected_selectors": ["review-invite-banner", "review-email-locked"]}
+    ],
+    "design_issues": [
+      {"screen": "/donner-mon-avis with an invitation", "issues": ["Only the product card shows, but it stays in a 2-column grid and fills half the width, leaving an empty gap on the right on desktop."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_reviews_testimonials.py", "/app/test_reports/pytest/reviews.xml"],
+  "action_items": [
+    "Optional: add a dry-run/simulation switch for review_rejected emails in preview (like CONTACT_EMAIL_DRY_RUN)",
+    "Optional: reuse the existing unused, unexpired invite instead of replacing the token on every create_invite call",
+    "Optional: when editing a review with source=order, lock product_slug or clear verified_purchase; recompute text_hash when the text is edited",
+    "Optional: keep the invitation token in sessionStorage so a reload does not lose it; make the single card full width in invitation mode"
+  ],
+  "critical_code_review_comments": [
+    "reviews.py: elapsed_ms is sent by the client, so a bot can fake it. This is acceptable only because the honeypot, rate limits and duplicate checks also apply.",
+    "reviews.py purge() runs on every POST /api/reviews and every admin list GET; this is fine at the current volume.",
+    "ReviewPage.jsx: when arriving through an in-app link with ?produit, the product select shows empty for a moment until the products list loads, then the right product is selected (works)."
+  ],
+  "updated_files": ["/app/backend/tests/test_reviews_testimonials.py (new)", "/app/backend/tests/test_merch_features.py (skipped the obsolete TestTestimonials class, which used the old published-boolean model; it had left an orphan TEST_x testimonial, which I deleted by id)"],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "100% of the requested flows"},
+  "seed_data_creation": "None kept. All test testimonials, the TEST-REVIEW-ORDER-* order fixtures and their review_invites were deleted by id/order_id. The testimonials settings are back to their original values (enabled/home/products = true). The 'avis' page title was set back to its default (the site_content 'avis' document now exists with empty fields). Only the existing 'Ben' testimonial remains, unchanged.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: cd /app/backend && REACT_APP_BACKEND_URL=<frontend .env> python3 -m pytest tests/test_reviews_testimonials.py -n 0 (it must run serially; it restarts the backend through supervisorctl to reset the in-memory rate limiter, about 70 s in total). The test file loads backend/.env itself with dotenv. Motor needs a single persistent event loop, so the file uses LOOP.run_until_complete. In TestTestimonials of test_merch_features.py, the TestCheckoutPromo errors come from an env issue when importing server (PUBLIC_BASE_URL check) and were already there; TestTestimonials is now skipped. On the product page, /api/testimonials can take about 3–4 s in the browser, so wait before asserting testimonial-verified-*."
+}

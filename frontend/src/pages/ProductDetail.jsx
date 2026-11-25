@@ -15,6 +15,7 @@ import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
 import { t } from "@/lib/i18n";
+import { useContent } from "@/lib/content";
 import { WITHDRAWAL_CONSENT_VERSION, SITE_URL, absUrl } from "@/lib/site";
 import { WithdrawalConsent } from "@/components/WithdrawalConsent";
 
@@ -22,6 +23,7 @@ export default function ProductDetail() {
   const { slug } = useParams();
   const [buying, setBuying] = useState(false);
   const [waiver, setWaiver] = useState(false);
+  const avis = useContent("avis");
 
   const { data: product, isLoading, isError } = useQuery({ queryKey: ["product", slug], queryFn: () => getProduct(slug) });
   const { data: categories = [] } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
@@ -184,7 +186,7 @@ export default function ProductDetail() {
 
           <div className="bg-[#FAF8F5]"><BeforeYouBuy product={product} /></div>
 
-          <Testimonials place="product" product={product.slug} />
+          <Testimonials place="product" product={product.slug} cta={{ to: `/donner-mon-avis?produit=${product.slug}`, label: avis.product_link }} />
 
           {/* FAQ PRODUIT */}
           {(product.faq || []).length > 0 && (

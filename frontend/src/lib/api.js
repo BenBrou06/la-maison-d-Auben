@@ -91,7 +91,10 @@ export const adminSaveReassurance = (items) => api.put("/admin/reassurance", { i
 export const adminTestimonials = () => api.get("/admin/testimonials").then((r) => r.data);
 export const adminTestimonialSettings = (payload) => api.put("/admin/testimonials/settings", payload).then((r) => r.data);
 export const adminSaveTestimonial = (id, payload) => (id ? api.put(`/admin/testimonials/${id}`, payload) : api.post("/admin/testimonials", payload)).then((r) => r.data);
-export const adminDeleteTestimonial = (id) => api.delete(`/admin/testimonials/${id}`).then((r) => r.data);
+export const adminDeleteTestimonial = (id, confirmation) => api.post(`/admin/testimonials/${id}/delete-permanently`, { confirmation }).then((r) => r.data);
+export const adminTestimonialStatus = (id, payload) => api.put(`/admin/testimonials/${id}/status`, payload).then((r) => r.data);
+export const submitReview = (payload) => api.post("/reviews", payload).then((r) => r.data);
+export const getReviewInvitation = (token) => api.get("/reviews/invitation", { params: { token } }).then((r) => r.data);
 export const adminReorderTestimonials = (ids) => api.post("/admin/testimonials/reorder", { ids }).then((r) => r.data);
 
 // Vidéo : envoi par morceaux (onProgress reçoit 0..1)

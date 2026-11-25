@@ -157,6 +157,7 @@ export const LEGAL_PAGES = {
           "Paiement : les données de carte sont saisies et traitées directement par Stripe ; elles ne sont jamais reçues ni stockées par nos soins.",
           "Formulaire de contact : nom, adresse e-mail, sujet et message. Finalité : traiter votre demande, en confirmer la réception et vous répondre par e-mail. Base légale : mesures précontractuelles prises à votre demande lorsque celle-ci concerne un produit ou un achat ; intérêt légitime à répondre aux personnes qui nous contactent pour les autres demandes. Ces coordonnées ne sont jamais utilisées pour vous adresser des communications commerciales ou la newsletter.",
           "Newsletter : adresse e-mail, date du consentement, version du texte de consentement et statut d'inscription. Finalité : vous informer de nos nouveautés. Base légale : votre consentement, retirable à tout moment.",
+          "Témoignages clients : nom ou pseudonyme choisi, adresse e-mail, note facultative, texte, produit concerné, date de l'autorisation de publication et, pour un avis déposé depuis l'e-mail de livraison, le lien avec la commande (mention « Achat vérifié »). Finalité : recueillir, modérer et publier les témoignages, en vérifier l'authenticité et lutter contre les abus. Base légale : votre consentement à la publication et notre intérêt légitime à modérer. L'adresse e-mail n'est jamais publiée ; elle sert uniquement à la gestion de votre témoignage, à la vérification de son authenticité, à la détection des abus, à vous informer d'un éventuel refus et à traiter vos demandes.",
           "Sécurité : l'adresse IP est utilisée de façon temporaire (en mémoire, quelques minutes) pour limiter les abus sur les formulaires et le paiement. Base légale : intérêt légitime à sécuriser le site.",
         ],
       },
@@ -179,6 +180,8 @@ export const LEGAL_PAGES = {
         list: [
           "Commandes et preuves de consentement : 10 ans à compter de la commande (obligations comptables et preuve du contrat).",
           "Messages de contact : 3 ans à compter du dernier échange.",
+          "Témoignages : un témoignage publié est conservé tant qu'il reste en ligne et que vous n'avez pas demandé son retrait. Un témoignage non publié (en attente, validé non publié ou refusé) est anonymisé 90 jours après son dernier changement de statut : nom, adresse e-mail et texte sont alors effacés. Vous pouvez demander à tout moment la suppression de votre témoignage et des données associées via la page Contact.",
+          "Liens d'avis envoyés après achat : valables 180 jours, puis supprimés.",
           "Newsletter : jusqu'à votre désinscription ; l'adresse désinscrite est conservée avec la date de désinscription afin de respecter votre choix.",
         ],
       },

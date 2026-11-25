@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Check, FileSpreadsheet, Info, Quote, Star } from "lucide-react";
+import { ArrowRight, BadgeCheck, Check, FileSpreadsheet, Info, Quote, Star } from "lucide-react";
 import { Reveal } from "@/components/Reveal";
 import { Icon } from "@/components/Icon";
 import { getTestimonials } from "@/lib/api";
@@ -148,9 +148,17 @@ const Stars = ({ n }) => (
 );
 
 // Rien n'est affiché tant qu'aucun témoignage authentique n'est publié.
-export const Testimonials = ({ place, product = "", title = "Ils l'utilisent au quotidien." }) => {
+const ReviewLink = ({ cta, place }) => (
+  <Link to={cta.to} className="group inline-flex items-center gap-1.5 text-sm font-medium text-[#3B6B4C] underline-offset-4 hover:underline" data-testid={`review-link-${place}`}>
+    {cta.label} <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+  </Link>
+);
+
+export const Testimonials = ({ place, product = "", title = "Ils l'utilisent au quotidien.", cta }) => {
   const { data = [] } = useQuery({ queryKey: ["testimonials", place, product], queryFn: () => getTestimonials(place, product) });
-  if (!data.length) return null;
+  if (!data.length) {
+    return cta ? <div className="container-app py-8 text-center" data-testid={`review-cta-${place}`}><ReviewLink cta={cta} place={place} /></div> : null;
+  }
   return (
     <section className="container-app py-14 sm:py-20" data-testid={`testimonials-${place}`}>
       <Reveal className="max-w-2xl">
@@ -167,10 +175,16 @@ export const Testimonials = ({ place, product = "", title = "Ils l'utilisent au 
                 <span className="font-serif font-semibold text-[#1E3A2B]">{t.name}</span>
                 {t.rating && <Stars n={t.rating} />}
               </figcaption>
+              {t.verified_purchase && (
+                <span className="mt-3 inline-flex items-center gap-1 self-start rounded-full bg-[#EAF0EC] px-2.5 py-0.5 text-xs font-medium text-[#3B6B4C]" data-testid={`testimonial-verified-${t.id}`}>
+                  <BadgeCheck className="h-3.5 w-3.5" /> Achat vérifié
+                </span>
+              )}
             </figure>
           </Reveal>
         ))}
       </div>
+      {cta && <div className="mt-8"><ReviewLink cta={cta} place={place} /></div>}
     </section>
   );
 };

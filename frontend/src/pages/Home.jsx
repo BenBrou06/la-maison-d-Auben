@@ -26,6 +26,7 @@ export default function Home() {
   const { data: articles = [] } = useQuery({ queryKey: ["articles"], queryFn: () => getArticles() });
 
   const c = useContent("home");
+  const avis = useContent("avis");
   const featured = (c.featured_slug && products.find((p) => p.slug === c.featured_slug)) || products.find((p) => p.purchasable);
   const heroImage = c.hero_image ? mediaUrl(c.hero_image) : HERO_DEFAULT_IMAGE;
   const heroFramed = c.hero_image_frame_enabled !== false;
@@ -234,7 +235,7 @@ export default function Home() {
         </section>
       )}
 
-      <Testimonials place="home" title="Ce qu'en disent nos clients." />
+      <Testimonials place="home" title="Ce qu'en disent nos clients." cta={{ to: "/donner-mon-avis", label: avis.home_link }} />
 
       {/* NEWSLETTER */}
       <section className="container-app py-10 sm:py-16">

@@ -26,6 +26,8 @@ from stripe_keys import select_stripe_keys, preflight_new_live, LIVE_ACCOUNT_ID
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from download_renewal import router as renewal_router, admin_view as download_admin_view
+from reviews import router as reviews_router, purge as purge_reviews, backfill_status as backfill_review_status, \
+    create_invite as create_review_invite
 from merch import router as merch_router, pricing_of, reassurance_for, promo_status
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
@@ -650,6 +652,15 @@ async def _claim_email(sid: str, field: str) -> bool:
     return res.modified_count > 0
 
 
+async def review_invite(order: dict):
+    # Invitation à donner son avis : ne doit jamais bloquer la livraison du produit.
+    try:
+        return await create_review_invite(order, PUBLIC_BASE_URL)
+    except Exception as e:
+        logger.error(f"Review invite error (order {order.get('id')}): {type(e).__name__}")
+        return None
+
+
 async def _send_customer_email(order: dict):
     """Envoi idempotent + rejouable de l'e-mail client (état email_status propre)."""
     sid = order["session_id"]
@@ -668,6 +679,7 @@ async def _send_customer_email(order: dict):
                 product_name=order["product_name"], amount=order["amount"],
                 currency=order["currency"], download_url=download_url, order_id=order["id"],
                 withdrawal_consent=order.get("withdrawal_consent"),
+                review=await review_invite(order),
             ),
         )
         await db.orders.update_one({"session_id": sid}, {"$set": {
@@ -1252,6 +1264,9 @@ async def startup():
     async for sub in db.newsletter.find({"unsubscribe_token": {"$exists": False}}, {"_id": 1}):
         await db.newsletter.update_one({"_id": sub["_id"]}, {"$set": {"unsubscribe_token": secrets.token_urlsafe(32)}})
     await db.orders.create_index("download_token")
+    await db.review_invites.create_index("token_hash")
+    await backfill_review_status()
+    await purge_reviews()
     await db.orders.create_index("session_id", unique=True)
     await db.payment_transactions.create_index("session_id")
     await seed()
@@ -1282,6 +1297,7 @@ api.include_router(contact_router)
 api.include_router(renewal_router)
 app.include_router(api)
 app.include_router(merch_router)
+app.include_router(reviews_router)
 
 
 @app.middleware("http")

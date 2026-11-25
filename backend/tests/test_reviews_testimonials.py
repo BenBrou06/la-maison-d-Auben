@@ -37,9 +37,8 @@ def wait_backend():
 
 
 def reset_rl():
-    subprocess.run(["sudo", "supervisorctl", "restart", "backend"], capture_output=True)
-    time.sleep(4)
-    wait_backend()
+    # Limite par appareil désormais persistante en base : on efface seulement les compteurs des tests.
+    mdb.rate_hits.delete_many({"bucket": {"$in": ["review", "review-day", "review-report", "review-invite"]}})
     _posts["n"] = 0
 
 
@@ -58,7 +57,8 @@ def email(tag):
 
 def base(**kw):
     p = {"kind": "brand", "product_slug": "", "name": "TEST_Reviewer", "email": email("x"), "rating": None,
-         "text": f"TEST_ avis sincère {uuid.uuid4().hex}", "consent": True, "invitation": "", "website": "", "elapsed_ms": 5000}
+         "text": f"TEST_ avis sincère {uuid.uuid4().hex}", "consent": True, "invitation": "", "website": "", "elapsed_ms": 5000,
+         "experience_month": "2026-10"}
     p.update(kw)
     return p
 
@@ -272,7 +272,7 @@ class TestAdmin:
         assert st("published").status_code == 200
         pub = requests.get(f"{API}/testimonials", params={"place": "home"}).json()
         p = next(x for x in pub if x["id"] == t["id"])
-        assert set(p) <= {"id", "name", "text", "product_slug", "verified_purchase", "rating"}
+        assert set(p) <= {"id", "name", "text", "product_slug", "verified_purchase", "rating", "published_at", "experience_month"}
         assert st("approved").status_code == 200  # unpublish
         assert t["id"] not in [x["id"] for x in requests.get(f"{API}/testimonials", params={"place": "home"}).json()]
         assert st("rejected").status_code == 400
@@ -287,13 +287,12 @@ class TestAdmin:
         t = admin_create(admin)
         r = admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "rejected", "reason": "spam", "notify": True})
         assert r.status_code == 200, r.text
-        print("notified:", r.json()["notified"])
-        assert r.json()["notified"] is True
+        assert r.json()["notice"] == "simulated"
         first = r.json()["item"]["author_notified_at"]
         assert first
         admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "pending"})
         r2 = admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "rejected", "reason": "spam", "notify": True})
-        assert r2.status_code == 200 and r2.json()["notified"] is None
+        assert r2.status_code == 200 and r2.json()["notice"] == "already"
         assert r2.json()["item"]["author_notified_at"] == first
 
     def test_edit_and_untick_authentic(self, admin):
@@ -346,3 +345,74 @@ class TestAdmin:
         b = item(admin, pub["id"])
         assert b["status"] == "published" and b["name"] == "TEST_Admin" and not b.get("anonymized_at")
         assert admin.put(f"{API}/admin/testimonials/{p['id']}/status", json={"status": "pending"}).status_code == 400
+
+
+class TestComplianceAdjustments:
+    def test_rate_limit_survives_restart(self):
+        reset_rl()
+        for _ in range(3):
+            assert post_review(base(text="court"), reset_if_needed=False).status_code == 400
+        subprocess.run(["sudo", "supervisorctl", "restart", "backend"], capture_output=True)
+        time.sleep(4)
+        wait_backend()
+        assert post_review(base(), reset_if_needed=False).status_code == 429
+        assert mdb.rate_hits.find_one({"bucket": "review"}, {"_id": 0, "key": 1})["key"].count(".") == 0  # IP non stockée en clair
+        reset_rl()
+
+    def test_experience_month_required_and_not_future(self):
+        reset_rl()
+        p = base(); p.pop("experience_month")
+        assert post_review(p).status_code == 422
+        assert post_review(base(experience_month="2099-01")).status_code == 400
+        em = email("exp")
+        assert post_review(base(email=em, experience_month="2026-09")).status_code == 200
+        assert stored(em)[0]["experience_month"] == "2026-09"
+
+    def test_pending_never_changed_is_anonymized(self, admin):
+        t = admin_create(admin)
+        old = (datetime.now(timezone.utc) - timedelta(days=95)).isoformat()
+        mdb.testimonials.update_one({"id": t["id"]}, {"$set": {"created_at": old}, "$unset": {"status_changed_at": ""}})
+        a = item(admin, t["id"])
+        assert a["anonymized_at"] and a["email"] == "" and a["text"] == ""
+
+    def test_published_email_erased_after_12_months_and_unpublished_after_3_years(self, admin):
+        a, b = admin_create(admin, email=email("pubA")), admin_create(admin, email=email("pubB"))
+        for t in (a, b):
+            admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "approved"})
+            assert admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "published"}).json()["item"]["published_at"]
+        ago = lambda d: (datetime.now(timezone.utc) - timedelta(days=d)).isoformat()
+        mdb.testimonials.update_one({"id": a["id"]}, {"$set": {"published_at": ago(370)}})
+        mdb.testimonials.update_one({"id": b["id"]}, {"$set": {"published_at": ago(3 * 365 + 2)}})
+        x, y = item(admin, a["id"]), item(admin, b["id"])
+        assert x["status"] == "published" and x["email"] == "" and x["text"] and x["email_erased_at"]
+        assert y["status"] == "rejected" and y["rejection_reason"] == "expired" and y["anonymized_at"] and y["text"] == ""
+
+    def test_rejection_notice_rules(self, admin):
+        em = email("notice")
+        t1, t2, t3 = (admin_create(admin, email=em) for _ in range(3))
+        r = admin.put(f"{API}/admin/testimonials/{t1['id']}/status", json={"status": "rejected", "reason": "off_topic"})
+        assert r.json()["notice"] == "simulated"  # obligatoire, sans case à cocher
+        r = admin.put(f"{API}/admin/testimonials/{t2['id']}/status", json={"status": "rejected", "reason": "off_topic"})
+        assert r.json()["notice"] == "limited"  # même adresse < 30 jours
+        r = admin.put(f"{API}/admin/testimonials/{t3['id']}/status", json={"status": "rejected", "reason": "spam"})
+        assert r.json()["notice"] == "skipped_abuse"
+        assert admin.put(f"{API}/admin/testimonials/{t3['id']}/status", json={"status": "rejected", "reason": "expired"}).status_code == 400
+
+    def test_public_dates_and_report(self, admin):
+        reset_rl()
+        t = admin_create(admin, experience_month="2026-08")
+        admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "approved"})
+        admin.put(f"{API}/admin/testimonials/{t['id']}/status", json={"status": "published"})
+        orig = mdb.site_config.find_one({"id": "testimonials"}, {"_id": 0}) or {}
+        admin.put(f"{API}/admin/testimonials/settings", json={"enabled": True, "show_home": True, "show_products": True})
+        pub = [x for x in requests.get(f"{API}/testimonials", params={"place": "home"}).json() if x["id"] == t["id"]][0]
+        assert pub["experience_month"] == "2026-08" and pub["published_at"] and "reports" not in pub
+        assert requests.post(f"{API}/testimonials/{t['id']}/report", json={"reason": "fake", "message": "doute"}).status_code == 200
+        assert requests.post(f"{API}/testimonials/nope/report", json={"reason": "fake"}).status_code == 404
+        v = item(admin, t["id"])
+        assert v["new_reports"] == 1 and v["reports"][0]["reason"] == "fake"
+        assert admin.post(f"{API}/admin/testimonials/{t['id']}/reports-seen").json()["new_reports"] == 0
+        codes = [requests.post(f"{API}/testimonials/{t['id']}/report", json={"reason": "other"}).status_code for _ in range(3)]
+        assert codes[-1] == 429
+        admin.put(f"{API}/admin/testimonials/settings", json={k: orig.get(k, d) for k, d in (("enabled", False), ("show_home", True), ("show_products", True))})
+        reset_rl()

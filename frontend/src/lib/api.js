@@ -93,6 +93,8 @@ export const adminTestimonialSettings = (payload) => api.put("/admin/testimonial
 export const adminSaveTestimonial = (id, payload) => (id ? api.put(`/admin/testimonials/${id}`, payload) : api.post("/admin/testimonials", payload)).then((r) => r.data);
 export const adminDeleteTestimonial = (id, confirmation) => api.post(`/admin/testimonials/${id}/delete-permanently`, { confirmation }).then((r) => r.data);
 export const adminTestimonialStatus = (id, payload) => api.put(`/admin/testimonials/${id}/status`, payload).then((r) => r.data);
+export const reportTestimonial = (id, payload) => api.post(`/testimonials/${id}/report`, payload).then((r) => r.data);
+export const adminReportsSeen = (id) => api.post(`/admin/testimonials/${id}/reports-seen`).then((r) => r.data);
 export const submitReview = (payload) => api.post("/reviews", payload).then((r) => r.data);
 export const getReviewInvitation = (token) => api.get("/reviews/invitation", { params: { token } }).then((r) => r.data);
 export const adminReorderTestimonials = (ids) => api.post("/admin/testimonials/reorder", { ids }).then((r) => r.data);

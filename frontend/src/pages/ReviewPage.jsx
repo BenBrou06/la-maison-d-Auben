@@ -9,6 +9,7 @@ import { useContent, InlineText } from "@/lib/content";
 
 const field = "w-full rounded-xl border border-[#E2DDD5] bg-white px-4 py-3 text-[#2C332E] placeholder-[#626D66]/60 focus:outline-none focus:ring-2 focus:ring-[#87A987]";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const THIS_MONTH = new Date().toISOString().slice(0, 7);
 
 function StarPicker({ value, onChange }) {
   const [hover, setHover] = useState(0);
@@ -60,7 +61,7 @@ export default function ReviewPage() {
     return t || (params.get("produit") ? "" : sessionStorage.getItem("auben-review-invite") || "");
   });
   const [kind, setKind] = useState(params.get("produit") || token ? "product" : "");
-  const [form, setForm] = useState({ product_slug: params.get("produit") || "", name: "", email: "", rating: null, text: "", consent: false, website: "" });
+  const [form, setForm] = useState({ product_slug: params.get("produit") || "", name: "", email: "", rating: null, text: "", consent: false, website: "", experience_month: THIS_MONTH });
   const [invite, setInvite] = useState(null);
   const [inviteError, setInviteError] = useState("");
   const [error, setError] = useState("");
@@ -85,6 +86,7 @@ export default function ReviewPage() {
     if (kind === "product" && !form.product_slug) return setError("Choisissez le produit concerné.");
     if (!form.name.trim()) return setError("Indiquez un nom ou un pseudonyme.");
     if (!useInvite && !EMAIL.test(form.email.trim())) return setError("Adresse e-mail invalide.");
+    if (!/^\d{4}-\d{2}$/.test(form.experience_month) || form.experience_month > THIS_MONTH) return setError("Indiquez le mois de votre expérience (pas dans le futur).");
     if (form.text.trim().length < 10) return setError("Votre témoignage est un peu court (10 caractères minimum).");
     if (!form.consent) return setError("Cochez la case autorisant la publication de votre témoignage.");
     setSending(true);
@@ -133,7 +135,14 @@ export default function ReviewPage() {
                   ? <p className="flex items-center rounded-xl border border-dashed border-[#CBD9CE] px-4 py-3 text-sm text-[#626D66]" data-testid="review-email-locked">E-mail de votre commande : {invite.email_hint}</p>
                   : <input type="email" maxLength={200} placeholder="Votre e-mail (jamais affiché)" aria-label="Votre e-mail" value={form.email} onChange={(e) => set("email", e.target.value)} className={field} data-testid="review-email" />}
               </div>
-              <StarPicker value={form.rating} onChange={(v) => set("rating", v)} />
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <StarPicker value={form.rating} onChange={(v) => set("rating", v)} />
+                <label className="flex items-center gap-2 text-sm text-[#626D66]">
+                  Date de votre expérience
+                  <input type="month" min="2015-01" max={THIS_MONTH} value={form.experience_month} onChange={(e) => set("experience_month", e.target.value)}
+                    className="rounded-xl border border-[#E2DDD5] bg-white px-3 py-2 text-[#2C332E] focus:outline-none focus:ring-2 focus:ring-[#87A987]" data-testid="review-experience" />
+                </label>
+              </div>
               <div>
                 <textarea maxLength={1500} rows={6} placeholder="Votre témoignage" aria-label="Votre témoignage" value={form.text} onChange={(e) => set("text", e.target.value)} className={field} data-testid="review-text" />
                 <p className="mt-1 text-right text-xs text-[#87A987]">{form.text.length} / 1500</p>

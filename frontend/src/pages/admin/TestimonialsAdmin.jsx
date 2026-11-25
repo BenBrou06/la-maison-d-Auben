@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowUp, ArrowDown, Trash2, Pencil, Plus, Star, BadgeCheck, Lock } from "lucide-react";
+import { ArrowUp, ArrowDown, Trash2, Pencil, Plus, Star, BadgeCheck, Lock, Flag } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   adminTestimonials, adminTestimonialSettings, adminSaveTestimonial, adminDeleteTestimonial,
-  adminReorderTestimonials, adminTestimonialStatus, getProducts,
+  adminReorderTestimonials, adminTestimonialStatus, adminReportsSeen, getProducts,
 } from "@/lib/api";
 import { ConfirmDeleteDialog } from "@/pages/admin/ConfirmDeleteDialog";
 import { inputCls, labelCls, helpCls, move, IconBtn, Toggle } from "@/pages/admin/product/ui";
@@ -25,16 +25,26 @@ const ACTIONS = {
   published: [["approved", "Dépublier"], ["rejected", "Refuser"]],
   rejected: [["pending", "Réexaminer"]],
 };
+const NOTICE = {
+  sent: "Avis refusé ; son auteur a reçu le motif par e-mail.",
+  simulated: "Avis refusé ; e-mail du motif à l'auteur simulé (Preview).",
+  no_email: "Avis refusé ; aucune adresse e-mail : l'auteur ne peut pas être informé.",
+  already: "Avis refusé ; l'auteur a déjà été informé d'un refus pour cet avis (pas de nouvel e-mail).",
+  skipped_abuse: "Avis refusé sans e-mail (adresse probablement usurpée).",
+  limited: "Avis refusé ; cette adresse a déjà reçu un e-mail de refus il y a moins de 30 jours : pas de nouvel envoi.",
+  failed: "Avis refusé, mais l'e-mail à l'auteur n'a pas pu partir.",
+};
+const ABUSE = ["spam", "impersonation"];
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "");
 const errMsg = (e, f) => { const d = e.response?.data?.detail; return typeof d === "string" ? d : f; };
 
 function TestimonialForm({ initial, products, onDone }) {
-  const [f, setF] = useState({ name: "", text: "", rating: null, kind: "brand", product_slug: "", email: "", authentic: false, source_note: "",
+  const [f, setF] = useState({ name: "", text: "", rating: null, kind: "brand", product_slug: "", email: "", authentic: false, source_note: "", experience_month: "",
     ...initial, kind: initial.kind || (initial.product_slug ? "product" : "brand") });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const save = async () => {
-    const { name, text, rating, kind, product_slug, email, authentic, source_note } = f;
-    try { await adminSaveTestimonial(initial.id, { name, text, rating: rating || null, kind, product_slug, email: email || "", authentic, source_note: source_note || "" }); toast.success("Témoignage enregistré."); onDone(); }
+    const { name, text, rating, kind, product_slug, email, authentic, source_note, experience_month } = f;
+    try { await adminSaveTestimonial(initial.id, { name, text, rating: rating || null, kind, product_slug, email: email || "", authentic, source_note: source_note || "", experience_month: experience_month || "" }); toast.success("Témoignage enregistré."); onDone(); }
     catch (e) { toast.error(errMsg(e, "Nom et texte sont obligatoires.")); }
   };
   return (
@@ -54,6 +64,9 @@ function TestimonialForm({ initial, products, onDone }) {
           <select className={inputCls} value={f.rating || ""} onChange={(e) => set("rating", e.target.value ? Number(e.target.value) : null)} data-testid="testimonial-rating">
             <option value="">Aucune note</option>{[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} / 5</option>)}
           </select></div>
+        <div><label className={labelCls}>Date de l'expérience (mois)</label>
+          <input type="month" className={inputCls} value={f.experience_month || ""} onChange={(e) => set("experience_month", e.target.value)} data-testid="testimonial-experience" />
+          <p className={helpCls}>Affichée sur le site avec la date de publication.</p></div>
       </div>
       <div><label className={labelCls}>Texte du témoignage</label><textarea rows={4} className={inputCls} value={f.text} onChange={(e) => set("text", e.target.value)} data-testid="testimonial-text" /></div>
       <div><label className={labelCls}>Note interne (jamais affichée sur le site)</label><input className={inputCls} value={f.source_note || ""} onChange={(e) => set("source_note", e.target.value)} data-testid="testimonial-source" /></div>
@@ -71,11 +84,11 @@ function RejectDialog({ item, reasons, onClose, onDone }) {
   const [reason, setReason] = useState("");
   const [detail, setDetail] = useState("");
   const canNotify = !!item?.email && !item?.author_notified_at;
-  const [notify, setNotify] = useState(true);
+  const [notify, setNotify] = useState(false);
   const confirm = async () => {
     try {
-      const r = await adminTestimonialStatus(item.id, { status: "rejected", reason, detail, notify: canNotify && notify });
-      toast.success(r.notified ? `Avis refusé, son auteur a été informé du motif${r.simulated ? " (envoi simulé en Preview)" : ""}.` : r.notified === false ? "Avis refusé, mais l'e-mail à l'auteur n'a pas pu partir." : "Avis refusé.");
+      const r = await adminTestimonialStatus(item.id, { status: "rejected", reason, detail, notify });
+      (r.notice === "failed" ? toast.error : toast.success)(NOTICE[r.notice] || "Avis refusé.");
       onDone();
     } catch (e) { toast.error(errMsg(e, "Échec du refus.")); }
   };
@@ -88,12 +101,13 @@ function RejectDialog({ item, reasons, onClose, onDone }) {
         </DialogHeader>
         <select className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} data-testid="reject-reason">
           <option value="">Motif du refus…</option>
-          {Object.entries(reasons).map(([k, v]) => <option key={k} value={k}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
+          {Object.entries(reasons).filter(([k]) => k !== "expired").map(([k, v]) => <option key={k} value={k}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
         </select>
         <textarea rows={3} className={inputCls} placeholder={reason === "other" ? "Précisez le motif (obligatoire)" : "Précision facultative, transmise à l'auteur"} value={detail} onChange={(e) => setDetail(e.target.value)} data-testid="reject-detail" />
-        {canNotify
-          ? <Toggle checked={notify} onChange={setNotify} label="Informer l'auteur du motif par e-mail" hint="Un seul e-mail, envoyé uniquement par cette action." testid="reject-notify" />
-          : <p className={helpCls}>{item?.author_notified_at ? "L'auteur a déjà été informé d'un refus." : "Aucune adresse e-mail : l'auteur ne peut pas être informé."}</p>}
+        {!canNotify ? <p className={helpCls} data-testid="reject-notice-info">{item?.author_notified_at ? "L'auteur a déjà été informé d'un refus pour cet avis : pas de nouvel e-mail." : "Aucune adresse e-mail : l'auteur ne peut pas être informé."}</p>
+          : ABUSE.includes(reason)
+            ? <Toggle checked={notify} onChange={setNotify} label="Envoyer quand même le motif par e-mail" hint="Pour un spam ou une usurpation, l'adresse appartient souvent à quelqu'un d'autre : par défaut, aucun e-mail n'est envoyé." testid="reject-notify" />
+            : <p className={helpCls} data-testid="reject-notice-info">Le motif sera envoyé à l'auteur par e-mail (obligation légale) : un seul e-mail par avis, et au plus un par adresse sur 30 jours.</p>}
         <DialogFooter>
           <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm text-[#626D66] hover:bg-[#FAF8F5]" data-testid="reject-cancel">Annuler</button>
           <button onClick={confirm} disabled={!reason || (reason === "other" && !detail.trim())} data-testid="reject-submit"
@@ -104,7 +118,7 @@ function RejectDialog({ item, reasons, onClose, onDone }) {
   );
 }
 
-function Row({ t, i, items, products, reasons, onEdit, onReject, onDelete, refresh }) {
+function Row({ t, i, items, products, reasons, reportReasons, onEdit, onReject, onDelete, refresh }) {
   const [label, cls] = STATUS[t.status];
   const reorder = async (dir) => { await adminReorderTestimonials(move(items, i, dir).map((x) => x.id)); refresh(); };
   const setStatus = async (status) => {
@@ -127,6 +141,15 @@ function Row({ t, i, items, products, reasons, onEdit, onReject, onDelete, refre
       {t.source_note && <p className="mt-1 text-xs italic text-[#626D66]">Note interne : {t.source_note}</p>}
       {t.status === "rejected" && t.rejection_reason && <p className="mt-1 text-xs text-[#8A2A1F]">Motif : {reasons[t.rejection_reason]}{t.rejection_detail ? ` — ${t.rejection_detail}` : ""}{t.author_notified_at ? " · auteur informé" : ""}</p>}
       {t.purge_at && <p className="mt-1 text-xs text-[#87A987]">Anonymisation automatique le {day(t.purge_at)} s'il n'est pas publié.</p>}
+      {t.status === "published" && t.unpublish_at && <p className="mt-1 text-xs text-[#87A987]" data-testid={`testimonial-retention-${t.id}`}>Publié le {day(t.published_at)} · e-mail effacé le {t.email_purge_at ? day(t.email_purge_at) : "(déjà effacé)"} · retrait automatique le {day(t.unpublish_at)}.</p>}
+      {t.author_notice && t.status === "rejected" && <p className="mt-1 text-xs text-[#626D66]">{NOTICE[t.author_notice]}</p>}
+      {(t.reports || []).length > 0 && (
+        <div className="mt-2 rounded-lg bg-[#FBF3E6] p-3 text-xs text-[#7A5520]" data-testid={`testimonial-reports-${t.id}`}>
+          <p className="flex items-center gap-1 font-semibold"><Flag className="h-3 w-3" /> Signalé {t.reports.length} fois{t.new_reports ? ` (${t.new_reports} nouveau${t.new_reports > 1 ? "x" : ""})` : ""}</p>
+          <ul className="mt-1 space-y-0.5">{t.reports.slice(-3).map((r, k) => <li key={k}>{day(r.at)} — {reportReasons[r.reason]}{r.message ? ` : « ${r.message} »` : ""}</li>)}</ul>
+          {t.new_reports > 0 && <button type="button" onClick={async () => { await adminReportsSeen(t.id); refresh(); }} className="mt-1 underline" data-testid={`testimonial-reports-seen-${t.id}`}>Marquer comme examinés</button>}
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {!anon && ACTIONS[t.status].map(([s, lbl, hint]) => (
           <button key={s} type="button" title={hint} onClick={() => setStatus(s)} data-testid={`testimonial-action-${s}-${t.id}`}
@@ -190,7 +213,7 @@ export function TestimonialsAdmin() {
         {editing === "new" && <TestimonialForm initial={{}} products={products} onDone={() => { setEditing(null); refresh(); }} />}
         {items.map((t) => (editing === t.id
           ? <TestimonialForm key={t.id} initial={t} products={products} onDone={() => { setEditing(null); refresh(); }} />
-          : <Row key={t.id} t={t} i={all.indexOf(t)} items={all} products={products} reasons={data.reasons} onEdit={() => setEditing(t.id)} onReject={setRejecting} onDelete={setDeleting} refresh={refresh} />))}
+          : <Row key={t.id} t={t} i={all.indexOf(t)} items={all} products={products} reasons={data.reasons} reportReasons={data.report_reasons} onEdit={() => setEditing(t.id)} onReject={setRejecting} onDelete={setDeleting} refresh={refresh} />))}
         {!items.length && editing !== "new" && <p className={helpCls} data-testid="testimonials-empty">Aucun témoignage dans cette catégorie.</p>}
       </div>
       {editing !== "new" && (

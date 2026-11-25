@@ -30,6 +30,7 @@ const COLS = [
       { to: "/cgv", label: "CGV" },
       { to: "/confidentialite", label: "Confidentialité" },
       { to: "/politique-cookies", label: "Cookies" },
+      { to: "/avis-clients", label: "Avis clients" },
     ],
   },
 ];

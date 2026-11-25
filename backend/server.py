@@ -1265,6 +1265,8 @@ async def startup():
         await db.newsletter.update_one({"_id": sub["_id"]}, {"$set": {"unsubscribe_token": secrets.token_urlsafe(32)}})
     await db.orders.create_index("download_token")
     await db.review_invites.create_index("token_hash")
+    await db.rate_hits.create_index("at", expireAfterSeconds=86400)
+    await db.rate_hits.create_index([("bucket", 1), ("key", 1), ("at", 1)])
     await backfill_review_status()
     await purge_reviews()
     await db.orders.create_index("session_id", unique=True)

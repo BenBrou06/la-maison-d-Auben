@@ -46,6 +46,7 @@ function App() {
           <Route path="/cgv" element={withLayout(<Legal pageKey="cgv" />)} />
           <Route path="/confidentialite" element={withLayout(<Legal pageKey="confidentialite" />)} />
           <Route path="/politique-cookies" element={withLayout(<Legal pageKey="politique-cookies" />)} />
+          <Route path="/avis-clients" element={withLayout(<Legal pageKey="avis-clients" />)} />
           <Route path="/produits-numeriques" element={withLayout(<Legal pageKey="produits-numeriques" />)} />
           <Route path="/newsletter/desinscription" element={withLayout(<NewsletterUnsubscribe />)} />
           <Route path="/admin/login" element={<AdminLogin />} />

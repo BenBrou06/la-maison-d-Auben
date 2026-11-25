@@ -180,7 +180,7 @@ export const LEGAL_PAGES = {
         list: [
           "Commandes et preuves de consentement : 10 ans à compter de la commande (obligations comptables et preuve du contrat).",
           "Messages de contact : 3 ans à compter du dernier échange.",
-          "Témoignages : un témoignage publié est conservé tant qu'il reste en ligne et que vous n'avez pas demandé son retrait. Un témoignage non publié (en attente, validé non publié ou refusé) est anonymisé 90 jours après son dernier changement de statut : nom, adresse e-mail et texte sont alors effacés. Vous pouvez demander à tout moment la suppression de votre témoignage et des données associées via la page Contact.",
+          "Témoignages : un témoignage publié reste affiché au maximum 3 ans, puis il est retiré et anonymisé. L'adresse e-mail de son auteur, conservée séparément du contenu public, est effacée 12 mois après la publication (le temps de traiter une contestation d'authenticité ou une demande de l'auteur). Un témoignage non publié (en attente, validé non publié ou refusé) est anonymisé 90 jours après son dernier changement de statut : nom, adresse e-mail et texte sont alors effacés. Vous pouvez demander à tout moment la suppression de votre témoignage et des données associées via la page Contact.",
           "Liens d'avis envoyés après achat : valables 180 jours, puis supprimés.",
           "Newsletter : jusqu'à votre désinscription ; l'adresse désinscrite est conservée avec la date de désinscription afin de respecter votre choix.",
         ],
@@ -196,6 +196,50 @@ export const LEGAL_PAGES = {
       {
         h: "Cookies",
         p: "Le site n'utilise aucun outil de mesure d'audience ni de publicité. Les cookies déposés par l'infrastructure d'hébergement sont décrits dans notre politique relative aux cookies.",
+      },
+    ],
+  },
+
+  "avis-clients": {
+    title: "Fonctionnement des avis clients",
+    intro: "Comment les témoignages sont recueillis, contrôlés, classés, publiés et conservés sur La Maison d'Auben (articles L111-7-2 et D111-10 à D111-12 du Code de la consommation).",
+    sections: [
+      {
+        h: "Collecte des avis",
+        p: "Les avis peuvent être déposés par tout visiteur depuis la page « Donner mon avis », ou par un client depuis le lien personnel figurant dans l'e-mail de livraison de sa commande. Aucune contrepartie (réduction, cadeau, paiement) n'est offerte en échange d'un avis, qu'il soit positif ou négatif.",
+      },
+      {
+        h: "Contrôle et modération",
+        p: "Une procédure de contrôle existe : chaque avis est relu par La Maison d'Auben avant toute publication. Nous pouvons contacter son auteur à l'adresse e-mail indiquée pour vérifier son authenticité. La mention « Achat vérifié » est réservée aux avis déposés depuis le lien reçu après un achat réel ; elle n'est jamais attribuée à un avis déposé librement. Un avis n'est jamais refusé parce qu'il est négatif ou critique.",
+      },
+      {
+        h: "Motifs de refus",
+        p: "Un avis peut être refusé uniquement pour l'un des motifs suivants. Tout refus est notifié à son auteur par e-mail, avec son motif.",
+        list: [
+          "Contenu publicitaire ou automatisé (spam).",
+          "Témoignage qui ne paraît pas authentique, ou usurpation d'identité.",
+          "Propos injurieux, diffamatoires ou contenu illicite.",
+          "Contenu sans rapport avec nos produits ou notre marque.",
+          "Présence de données personnelles d'un tiers.",
+          "Absence d'autorisation de publication.",
+        ],
+      },
+      {
+        h: "Délais de publication et de conservation",
+        list: [
+          "Un avis accepté est publié dans un délai maximum de 30 jours après sa réception.",
+          "Un avis publié reste affiché au maximum 3 ans après sa publication, puis il est retiré et anonymisé automatiquement. Vous pouvez demander son retrait à tout moment.",
+          "Un avis non publié (en attente, validé non publié ou refusé) est anonymisé 90 jours après son dernier changement de statut.",
+          "L'adresse e-mail de l'auteur d'un avis publié est effacée 12 mois après la publication.",
+        ],
+      },
+      {
+        h: "Affichage et classement",
+        p: "Chaque avis indique sa date de publication et la date de l'expérience déclarée par son auteur. Les avis sont présentés par défaut du plus récent au plus ancien ; vous pouvez aussi les afficher dans l'ordre choisi par La Maison d'Auben (« Sélection de la maison »). Les avis portant sur la marque peuvent apparaître sur l'ensemble des fiches produits.",
+      },
+      {
+        h: "Modification, retrait et signalement",
+        p: "Un avis publié n'est modifié qu'à la demande de son auteur, ou pour masquer des données personnelles. Pour modifier ou retirer votre avis, écrivez-nous depuis la page Contact. Si vous avez un doute sur l'authenticité d'un avis, utilisez le lien « Signaler » affiché sur chaque avis : nous le réexaminerons.",
       },
     ],
   },

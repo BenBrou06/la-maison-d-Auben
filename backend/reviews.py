@@ -23,6 +23,10 @@ router = APIRouter(prefix="/api")
 
 STATUSES = ("pending", "approved", "published", "rejected")
 RETENTION_DAYS = 90          # avis non publiés (en attente, à publier, refusés) : anonymisés ensuite
+EMAIL_DAYS = 365             # adresse e-mail d'un avis publié : effacée 12 mois après publication
+PUBLISHED_DAYS = 3 * 365     # durée maximale d'affichage d'un avis publié, puis retrait et anonymisation
+NOTIFY_COOLDOWN_DAYS = 30    # au plus un e-mail de refus par adresse sur cette période
+NO_DEFAULT_NOTIFY = ("spam", "impersonation")  # adresse probablement usurpée : envoi laissé au choix
 INVITE_DAYS = 180            # validité du lien d'avis envoyé après achat
 CONSENT_VERSION = "avis-v1-2026-11"
 REJECT_REASONS = {
@@ -35,7 +39,10 @@ REJECT_REASONS = {
     "third_party": "présence de données personnelles d'un tiers",
     "no_consent": "absence d'autorisation de publication",
     "other": "autre motif",
+    "expired": "durée maximale d'affichage atteinte (retrait automatique)",
 }
+REPORT_REASONS = {"fake": "Je doute de son authenticité", "abuse": "Contenu injurieux ou illicite",
+                  "personal": "Il contient des données personnelles", "other": "Autre raison"}
 EMAIL_DEFAULTS = {
     "email_title": "Votre avis compte pour nous !",
     "email_text": "Après avoir découvert et testé votre nouvel outil, prenez quelques instants pour nous partager votre expérience. "
@@ -82,17 +89,33 @@ async def backfill_status():
             "status": status_of(t), "source": t.get("source", "admin"),
             "kind": "product" if t.get("product_slug") else "brand",
             "status_changed_at": t.get("updated_at") or now_iso()}})
+    async for t in db.testimonials.find({"status": "published", "published_at": {"$exists": False}}, {"_id": 0, "id": 1, "status_changed_at": 1}):
+        await db.testimonials.update_one({"id": t["id"]}, {"$set": {"published_at": t.get("status_changed_at") or now_iso()}})
+
+
+ANONYMIZE = {"name": "Anonyme", "email": "", "text": "", "source_note": "", "order_id": "", "text_hash": "",
+             "rejection_detail": "", "reports": [], "authentic": False}
+
+
+def _ago(days: int) -> str:
+    return (_now() - timedelta(days=days)).isoformat()
 
 
 async def purge():
-    cutoff = (_now() - timedelta(days=RETENTION_DAYS)).isoformat()
-    res = await db.testimonials.update_many(
-        {"status": {"$in": ["pending", "approved", "rejected"]}, "status_changed_at": {"$lt": cutoff}, "anonymized_at": None},
-        {"$set": {"name": "Anonyme", "email": "", "text": "", "source_note": "", "order_id": "", "text_hash": "",
-                  "rejection_detail": "", "authentic": False, "status": "rejected", "anonymized_at": now_iso()}})
+    cutoff = _ago(RETENTION_DAYS)
+    stale = await db.testimonials.update_many(
+        {"status": {"$in": ["pending", "approved", "rejected"]}, "anonymized_at": None,
+         "$or": [{"status_changed_at": {"$lt": cutoff}}, {"status_changed_at": {"$exists": False}, "created_at": {"$lt": cutoff}}]},
+        {"$set": {**ANONYMIZE, "status": "rejected", "anonymized_at": now_iso()}})
+    expired = await db.testimonials.update_many(
+        {"status": "published", "published_at": {"$lt": _ago(PUBLISHED_DAYS)}},
+        {"$set": {**ANONYMIZE, "status": "rejected", "rejection_reason": "expired", "anonymized_at": now_iso(), "status_changed_at": now_iso()}})
+    emails = await db.testimonials.update_many(
+        {"status": "published", "published_at": {"$lt": _ago(EMAIL_DAYS)}, "email": {"$nin": ["", None]}},
+        {"$set": {"email": "", "order_id": "", "email_erased_at": now_iso()}})
     await db.review_invites.delete_many({"expires_at": {"$lt": now_iso()}})
-    if res.modified_count:
-        logger.info(f"Témoignages : {res.modified_count} dossier(s) anonymisé(s) (conservation {RETENTION_DAYS} j)")
+    if stale.modified_count or expired.modified_count or emails.modified_count:
+        logger.info(f"Témoignages : {stale.modified_count + expired.modified_count} anonymisé(s), {emails.modified_count} e-mail(s) effacé(s)")
 
 
 # --------------------------------------------------------------------------- #
@@ -129,14 +152,19 @@ async def _invite(token: str) -> dict:
     return inv
 
 
-def _rate(request: Request, bucket: str, limit: int, window: int):
-    from server import check_rate  # limiteur partagé du site
-    check_rate(request, bucket, limit, window)
+async def _rate(request: Request, bucket: str, limit: int, window: int):
+    """Limite par appareil conservée en base (survit aux redémarrages) ; l'IP n'est stockée que sous forme d'empreinte."""
+    from server import _client_ip
+    key = hmac.new(os.environ["JWT_SECRET"].encode(), _client_ip(request).encode(), hashlib.sha256).hexdigest()[:32]
+    since = _now() - timedelta(seconds=window)
+    if await db.rate_hits.count_documents({"bucket": bucket, "key": key, "at": {"$gt": since}}) >= limit:
+        raise HTTPException(429, "Trop d'envois depuis cet appareil. Merci de réessayer plus tard.")
+    await db.rate_hits.insert_one({"bucket": bucket, "key": key, "at": _now()})
 
 
 @router.get("/reviews/invitation")
 async def invitation_info(token: str, request: Request):
-    _rate(request, "review-invite", 30, 60)
+    await _rate(request, "review-invite", 30, 60)
     inv = await _invite(token)
     order = await db.orders.find_one({"id": inv["order_id"]}, {"_id": 0, "customer_email": 1})
     product = await db.products.find_one({"slug": inv["product_slug"]}, {"_id": 0, "name": 1})
@@ -156,6 +184,7 @@ class ReviewSubmit(BaseModel):
     rating: Optional[int] = Field(None, ge=1, le=5)
     text: str = Field(min_length=1, max_length=1500)
     consent: StrictBool
+    experience_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     invitation: str = Field("", max_length=100)
     website: str = Field("", max_length=200)
     elapsed_ms: int = 0
@@ -163,8 +192,8 @@ class ReviewSubmit(BaseModel):
 
 @router.post("/reviews")
 async def submit_review(inp: ReviewSubmit, request: Request):
-    _rate(request, "review", 3, 600)
-    _rate(request, "review-day", 10, 86400)
+    await _rate(request, "review", 3, 600)
+    await _rate(request, "review-day", 10, 86400)
     if inp.website.strip():
         return {"status": "ok"}  # piège à robots : réponse identique, rien n'est enregistré
     if inp.elapsed_ms < 3000:
@@ -176,6 +205,8 @@ async def submit_review(inp: ReviewSubmit, request: Request):
         raise HTTPException(400, "Indiquez un nom ou un pseudonyme.")
     if len(text) < 10:
         raise HTTPException(400, "Votre témoignage est un peu court : quelques mots de plus nous aideront (10 caractères minimum).")
+    if not ("2015-01" <= inp.experience_month <= _now().strftime("%Y-%m")):
+        raise HTTPException(400, "La date de votre expérience ne peut pas être dans le futur.")
     await purge()
     doc = {"source": "form", "verified_purchase": False, "order_id": ""}
     if inp.invitation:
@@ -210,6 +241,7 @@ async def submit_review(inp: ReviewSubmit, request: Request):
     doc.update({
         "id": str(uuid.uuid4()), "name": name, "email": email, "text": text, "rating": inp.rating,
         "kind": kind, "product_slug": slug, "authentic": False, "status": "pending", "source_note": "",
+        "experience_month": inp.experience_month, "reports": [],
         "text_hash": text_hash, "consent_at": now_iso(), "consent_version": CONSENT_VERSION,
         "order": (last or {}).get("order", -1) + 1, "created_at": now_iso(), "updated_at": now_iso(),
         "status_changed_at": now_iso(), "anonymized_at": None,
@@ -235,7 +267,9 @@ async def _settings() -> dict:
 
 def _public(t: dict) -> dict:
     out = {"id": t["id"], "name": t["name"], "text": t["text"], "product_slug": t.get("product_slug", ""),
-           "verified_purchase": bool(t.get("verified_purchase"))}
+           "verified_purchase": bool(t.get("verified_purchase")),
+           "published_at": t.get("published_at") or t.get("status_changed_at") or t.get("created_at"),
+           "experience_month": t.get("experience_month") or (t.get("created_at") or "")[:7]}
     if isinstance(t.get("rating"), int) and 1 <= t["rating"] <= 5:
         out["rating"] = t["rating"]
     return out
@@ -255,6 +289,25 @@ async def public_testimonials(place: str = "home", product: str = ""):
     return [_public(t) for t in items if t.get("name", "").strip() and t.get("text", "").strip()]
 
 
+class ReportInput(BaseModel):
+    reason: Literal["fake", "abuse", "personal", "other"]
+    message: str = Field("", max_length=500)
+    website: str = Field("", max_length=200)
+
+
+@router.post("/testimonials/{tid}/report")
+async def report_testimonial(tid: str, inp: ReportInput, request: Request):
+    """Signalement d'un doute (aucune donnée personnelle demandée) ; visible dans « Confiance »."""
+    await _rate(request, "review-report", 3, 3600)
+    if inp.website.strip():
+        return {"status": "ok"}
+    if not await db.testimonials.find_one({"id": tid, "status": "published"}, {"_id": 1}):
+        raise HTTPException(404, "Avis introuvable.")
+    await db.testimonials.update_one({"id": tid}, {"$push": {"reports": {"$each": [
+        {"at": now_iso(), "reason": inp.reason, "message": inp.message.strip()}], "$slice": -20}}})
+    return {"status": "ok"}
+
+
 # --------------------------------------------------------------------------- #
 # Administration (onglet « Confiance »)
 # --------------------------------------------------------------------------- #
@@ -267,6 +320,7 @@ class TestimonialInput(BaseModel):
     email: str = Field("", max_length=200)
     authentic: bool = False
     source_note: str = Field("", max_length=500)
+    experience_month: str = Field("", pattern=r"^(\d{4}-(0[1-9]|1[0-2]))?$")
 
 
 class StatusInput(BaseModel):
@@ -285,9 +339,16 @@ def _admin_view(t: dict) -> dict:
     t["status"] = status_of(t)
     t.setdefault("source", "admin")
     t.setdefault("kind", "product" if t.get("product_slug") else "brand")
-    changed = t.get("status_changed_at") or t.get("updated_at")
+    changed = t.get("status_changed_at") or t.get("created_at")
+    plus = lambda iso, d: (datetime.fromisoformat(iso) + timedelta(days=d)).isoformat()
     if t["status"] != "published" and not t.get("anonymized_at") and changed:
-        t["purge_at"] = (datetime.fromisoformat(changed) + timedelta(days=RETENTION_DAYS)).isoformat()
+        t["purge_at"] = plus(changed, RETENTION_DAYS)
+    if t["status"] == "published" and t.get("published_at"):
+        t["unpublish_at"] = plus(t["published_at"], PUBLISHED_DAYS)
+        if t.get("email"):
+            t["email_purge_at"] = plus(t["published_at"], EMAIL_DAYS)
+    seen = t.get("reports_seen_at") or ""
+    t["new_reports"] = sum(1 for r in t.get("reports") or [] if r["at"] > seen)
     return t
 
 
@@ -301,6 +362,8 @@ async def _get(tid: str) -> dict:
 async def _clean(inp: TestimonialInput) -> dict:
     d = inp.model_dump()
     d["name"], d["text"], d["email"] = d["name"].strip(), d["text"].strip(), d["email"].strip().lower()
+    if not d["experience_month"]:
+        d.pop("experience_month")
     if not d["name"] or not d["text"]:
         raise HTTPException(400, "Le nom et le texte sont obligatoires.")
     if d["kind"] == "product":
@@ -316,7 +379,14 @@ async def admin_testimonials(admin=Depends(get_current_admin)):
     await purge()
     items = await db.testimonials.find({}, {"_id": 0}).sort("order", 1).to_list(1000)
     return {"settings": await _settings(), "items": [_admin_view(t) for t in items],
-            "reasons": REJECT_REASONS, "retention_days": RETENTION_DAYS}
+            "reasons": REJECT_REASONS, "report_reasons": REPORT_REASONS, "retention_days": RETENTION_DAYS}
+
+
+@router.post("/admin/testimonials/{tid}/reports-seen")
+async def admin_reports_seen(tid: str, admin=Depends(get_current_admin)):
+    await _get(tid)
+    await db.testimonials.update_one({"id": tid}, {"$set": {"reports_seen_at": now_iso()}})
+    return _admin_view(await _get(tid))
 
 
 @router.put("/admin/testimonials/settings")
@@ -330,7 +400,7 @@ async def admin_add_testimonial(inp: TestimonialInput, admin=Depends(get_current
     last = await db.testimonials.find_one({}, {"_id": 0, "order": 1}, sort=[("order", -1)])
     t = {"id": str(uuid.uuid4()), **await _clean(inp), "status": "pending", "source": "admin", "verified_purchase": False,
          "order": (last or {}).get("order", -1) + 1, "created_at": now_iso(), "updated_at": now_iso(),
-         "status_changed_at": now_iso(), "anonymized_at": None}
+         "status_changed_at": now_iso(), "anonymized_at": None, "reports": []}
     await db.testimonials.insert_one(t)
     t.pop("_id", None)
     return _admin_view(t)
@@ -376,19 +446,36 @@ async def admin_testimonial_status(tid: str, inp: StatusInput, admin=Depends(get
     sets = {"status": inp.status, "status_changed_at": now_iso(), "updated_at": now_iso()}
     if inp.status == "approved" and cur == "pending":
         sets["authentic"] = True  # « Valider » = confirmé authentique et autorisé
-    if inp.status == "published" and not t.get("authentic"):
-        raise HTTPException(400, "Seul un témoignage confirmé comme authentique peut être publié.")
-    notified = None
+    if inp.status == "published":
+        if not t.get("authentic"):
+            raise HTTPException(400, "Seul un témoignage confirmé comme authentique peut être publié.")
+        sets["published_at"] = now_iso()
+    notice = None
     if inp.status == "rejected":
-        if inp.reason not in REJECT_REASONS or (inp.reason == "other" and not inp.detail.strip()):
+        if inp.reason not in REJECT_REASONS or inp.reason == "expired" or (inp.reason == "other" and not inp.detail.strip()):
             raise HTTPException(400, "Indiquez le motif du refus (et précisez-le pour « autre motif »).")
         sets.update(rejection_reason=inp.reason, rejection_detail=inp.detail.strip(), rejected_at=now_iso())
-        if inp.notify and t.get("email") and not t.get("author_notified_at"):
-            notified = await _notify_rejection(t, inp)
-            if notified:
-                sets["author_notified_at"] = now_iso()
+        notice = await _rejection_notice(t, inp)
+        if notice in ("sent", "simulated"):
+            sets["author_notified_at"] = now_iso()
+        sets["author_notice"] = notice
     await db.testimonials.update_one({"id": tid}, {"$set": sets})
-    return {"item": _admin_view(await _get(tid)), "notified": notified, "simulated": bool(notified) and EMAIL_DRY_RUN}
+    return {"item": _admin_view(await _get(tid)), "notice": notice}
+
+
+async def _rejection_notice(t: dict, inp: StatusInput) -> str:
+    """Le motif est envoyé à l'auteur (une seule fois par avis, au plus un e-mail par adresse sur 30 jours)."""
+    if not t.get("email"):
+        return "no_email"
+    if t.get("author_notified_at"):
+        return "already"
+    if inp.reason in NO_DEFAULT_NOTIFY and not inp.notify:
+        return "skipped_abuse"
+    if await db.testimonials.find_one({"email": t["email"], "author_notified_at": {"$gt": _ago(NOTIFY_COOLDOWN_DAYS)}}, {"_id": 1}):
+        return "limited"
+    if not await _notify_rejection(t, inp):
+        return "failed"
+    return "simulated" if EMAIL_DRY_RUN else "sent"
 
 
 @router.post("/admin/testimonials/{tid}/delete-permanently")

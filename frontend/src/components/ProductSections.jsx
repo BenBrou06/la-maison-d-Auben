@@ -1,10 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, BadgeCheck, Check, FileSpreadsheet, Info, Quote, Star } from "lucide-react";
+import { Check, FileSpreadsheet, Info } from "lucide-react";
 import { Reveal } from "@/components/Reveal";
 import { Icon } from "@/components/Icon";
-import { getTestimonials } from "@/lib/api";
 
 const FORMATS = { xlsx: "Classeur Excel (.xlsx)", xls: "Classeur Excel (.xls)", csv: "Fichier CSV", pdf: "Document PDF", zip: "Archive ZIP" };
 
@@ -141,50 +139,5 @@ export const BeforeYouBuy = ({ product }) => {
   );
 };
 
-const Stars = ({ n }) => (
-  <span className="flex gap-0.5" aria-label={`Note : ${n} sur 5`}>
-    {[1, 2, 3, 4, 5].map((k) => <Star key={k} className={`h-4 w-4 ${k <= n ? "fill-[#D4A359] text-[#D4A359]" : "text-[#E2DDD5]"}`} />)}
-  </span>
-);
-
 // Rien n'est affiché tant qu'aucun témoignage authentique n'est publié.
-const ReviewLink = ({ cta, place }) => (
-  <Link to={cta.to} className="group inline-flex items-center gap-1.5 text-sm font-medium text-[#3B6B4C] underline-offset-4 hover:underline" data-testid={`review-link-${place}`}>
-    {cta.label} <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-  </Link>
-);
-
-export const Testimonials = ({ place, product = "", title = "Ils l'utilisent au quotidien.", cta }) => {
-  const { data = [] } = useQuery({ queryKey: ["testimonials", place, product], queryFn: () => getTestimonials(place, product) });
-  if (!data.length) {
-    return cta ? <div className="container-app py-8 text-center" data-testid={`review-cta-${place}`}><ReviewLink cta={cta} place={place} /></div> : null;
-  }
-  return (
-    <section className="container-app py-14 sm:py-20" data-testid={`testimonials-${place}`}>
-      <Reveal className="max-w-2xl">
-        <span className="eyebrow">Témoignages</span>
-        <h2 className="mt-3 font-serif text-3xl font-semibold text-[#1E3A2B] sm:text-4xl">{title}</h2>
-      </Reveal>
-      <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {data.map((t, i) => (
-          <Reveal key={t.id} delay={(i % 3) * 0.06}>
-            <figure className="card-soft flex h-full flex-col p-7" data-testid={`testimonial-${t.id}`}>
-              <Quote className="h-6 w-6 text-[#D4A359]" />
-              <blockquote className="mt-4 flex-1 whitespace-pre-line text-[#2C332E]">{t.text}</blockquote>
-              <figcaption className="mt-5 flex items-center justify-between gap-3">
-                <span className="font-serif font-semibold text-[#1E3A2B]">{t.name}</span>
-                {t.rating && <Stars n={t.rating} />}
-              </figcaption>
-              {t.verified_purchase && (
-                <span className="mt-3 inline-flex items-center gap-1 self-start rounded-full bg-[#EAF0EC] px-2.5 py-0.5 text-xs font-medium text-[#3B6B4C]" data-testid={`testimonial-verified-${t.id}`}>
-                  <BadgeCheck className="h-3.5 w-3.5" /> Achat vérifié
-                </span>
-              )}
-            </figure>
-          </Reveal>
-        ))}
-      </div>
-      {cta && <div className="mt-8"><ReviewLink cta={cta} place={place} /></div>}
-    </section>
-  );
-};
+export { Testimonials } from "@/components/Testimonials";

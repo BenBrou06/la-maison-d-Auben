@@ -7,9 +7,11 @@ import { Reveal } from "@/components/Reveal";
 import { Icon } from "@/components/Icon";
 import { LaptopMockup, HeroVisual } from "@/components/Screenshot";
 import { ProductCard } from "@/components/ProductCard";
+import { PriceTag } from "@/components/PriceTag";
+import { Testimonials } from "@/components/ProductSections";
 import { Newsletter } from "@/components/Newsletter";
 import { getSettings, getProducts, getCategories, getArticles, mediaUrl } from "@/lib/api";
-import { formatPrice, t } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { useContent } from "@/lib/content";
 import { HERO_PAGES } from "@/content/schema";
 
@@ -24,6 +26,7 @@ export default function Home() {
   const { data: articles = [] } = useQuery({ queryKey: ["articles"], queryFn: () => getArticles() });
 
   const c = useContent("home");
+  const avis = useContent("avis");
   const featured = (c.featured_slug && products.find((p) => p.slug === c.featured_slug)) || products.find((p) => p.purchasable);
   const heroImage = c.hero_image ? mediaUrl(c.hero_image) : HERO_DEFAULT_IMAGE;
   const heroFramed = c.hero_image_frame_enabled !== false;
@@ -108,7 +111,7 @@ export default function Home() {
               </ul>
               <div className="mt-8 flex items-center gap-5">
                 {featured.purchasable
-                  ? <span className="font-serif text-3xl font-bold text-[#1E3A2B]">{formatPrice(featured.price, featured.currency)}</span>
+                  ? <PriceTag product={featured} size="md" testid="home-featured-price" />
                   : <span className="rounded-full bg-[#D4A359] px-3 py-1 text-xs font-semibold text-white" data-testid="featured-coming-soon">{t("badge.coming_soon")}</span>}
                 <Link
                   to={`/boutique/${featured.slug}`}
@@ -231,6 +234,8 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      <Testimonials place="home" title="Ce qu'en disent nos clients." cta={{ to: "/donner-mon-avis", label: avis.home_link }} />
 
       {/* NEWSLETTER */}
       <section className="container-app py-10 sm:py-16">

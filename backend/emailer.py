@@ -169,8 +169,39 @@ async def send_email(*, to: str, subject: str, html: str, reply_to: str = None):
     return (await send_email_result(to=to, subject=subject, html=html, reply_to=reply_to)).get("id")
 
 
+def _review_block(review: dict) -> str:
+    if not review:
+        return ""
+    return (
+        '<table role="presentation" width="100%" style="background:#F2EDE4;border-radius:12px;margin:24px 0 8px">'
+        '<tr><td style="padding:22px 24px">'
+        f'<p style="color:#1E3A2B;font-size:17px;font-weight:bold;margin:0 0 8px">{escape(review["email_title"])}</p>'
+        f'<p style="color:#2C332E;font-size:14px;line-height:1.6;margin:0 0 16px">{escape(review["email_text"])}</p>'
+        f'<a href="{escape(review["url"])}" style="background:#D4A359;color:#1E3A2B;text-decoration:none;padding:11px 22px;'
+        f'border-radius:12px;font-size:14px;font-weight:bold;display:inline-block">{escape(review["email_button"])}</a>'
+        '</td></tr></table>'
+    )
+
+
+def review_rejected_html(*, name: str, reason: str, detail: str = "") -> str:
+    extra = f'<p style="color:#2C332E;font-size:15px;line-height:1.6">Précision : {escape(detail)}</p>' if detail else ""
+    return (
+        '<table role="presentation" width="100%" style="background:#FAF8F5;padding:32px 0;font-family:Arial,Helvetica,sans-serif">'
+        '<tr><td align="center"><table role="presentation" width="560" style="background:#FFFFFF;border:1px solid #E2DDD5;border-radius:16px;overflow:hidden">'
+        '<tr><td style="background:#1E3A2B;padding:24px 32px"><span style="color:#FAF8F5;font-size:20px;font-weight:bold">La Maison d\'Auben</span></td></tr>'
+        '<tr><td style="padding:32px">'
+        f'<p style="color:#2C332E;font-size:15px;line-height:1.6">Bonjour {escape(name)},</p>'
+        '<p style="color:#2C332E;font-size:15px;line-height:1.6">Merci d\'avoir pris le temps de partager votre témoignage. '
+        f'Après examen, nous ne pouvons pas le publier pour le motif suivant : <strong>{escape(reason)}</strong>.</p>{extra}'
+        '<p style="color:#626D66;font-size:13px;line-height:1.6">Nos règles de modération ne refusent jamais un avis parce qu\'il est critique. '
+        'Vous pouvez nous écrire depuis la page Contact du site pour toute question, ou pour demander la suppression de votre témoignage et de vos données.</p>'
+        '<p style="font-size:12px;color:#888;margin-top:24px">Envoyé par La Maison d\'Auben.</p>'
+        '</td></tr></table></td></tr></table>'
+    )
+
+
 def order_confirmation_html(*, product_name: str, amount: float, currency: str, download_url: str, order_id: str,
-                            withdrawal_consent: dict = None) -> str:
+                            withdrawal_consent: dict = None, review: dict = None) -> str:
     money = f"{amount:.2f} {currency.upper()}".replace(".", ",")
     waiver = ""
     if withdrawal_consent:
@@ -201,6 +232,7 @@ def order_confirmation_html(*, product_name: str, amount: float, currency: str, 
         '<p style="color:#626D66;font-size:13px;line-height:1.6">Ce lien de téléchargement est personnel et sécurisé. '
         'Conservez cet e-mail : il vous permet de récupérer votre fichier à tout moment.</p>'
         f'{waiver}'
+        f'{_review_block(review)}'
         '<p style="font-size:12px;color:#888;margin-top:24px">Envoyé par La Maison d\'Auben. '
         'Nous ne vous demanderons jamais votre mot de passe ou vos informations bancaires par e-mail.</p>'
         '</td></tr></table></td></tr></table>'

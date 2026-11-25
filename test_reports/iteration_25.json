@@ -1,0 +1,38 @@
+{
+  "summary": "Retest of the testimonials v2 changes in Preview: experience month, public reports and their review in admin, published_at, 12-month email erasure, 3-year auto-removal, the rejection-notice rules (simulated / limited / skipped_abuse / already), rate limits stored in the database, stable HMAC invitation token, product lock on verified-purchase reviews, text_hash recomputed on edit, invitation token kept in sessionStorage, and the /avis-clients policy page. Backend: the existing test_reviews_testimonials.py passed 32/32. My new test_reviews_extra.py passed 6/6 (report honeypot, 404 for unpublished reviews, 422 validation, new_reports counted again after 'reports-seen', text_hash after editing, the admin experience_month pattern, the stable invitation token, and the 400 when the product of a verified review is changed). Frontend, desktop and mobile: the home testimonials show 'Publié le … · Expérience : …'; sorting works; the report dialog submits and shows a toast; the policy link opens /avis-clients (6 sections, link in the footer). The invitation survives a page reload (email stays locked) and the form submits; the token is removed from sessionStorage afterwards. In admin, the report box shows '(1 nouveau)' and 'Marquer comme examinés' clears it. The reject dialog shows the right notice text, and the 'spam' reason shows a toggle. Rejecting shows the toast 'e-mail … simulé (Preview)'. Only cosmetic and wording issues were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "reviews.PUBLISHED_DAYS", "issue": "The '3 years' limit is 3*365 days. The auto-removal date is therefore 24 Nov 2029 for a review published on 25 Nov 2026, one day early because 2028 is a leap year. Harmless, but it does not match the '3 ans' wording exactly."},
+      {"endpoint": "tests reset_rl()", "issue": "The tests clear every rate_hits entry in the review buckets, not only the test ones, because the IP key is hashed. This is fine in Preview, but these tests must never run against Production."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TestimonialsAdmin retention line", "issue": "A published review that never had an email (e.g. Ben) shows 'e-mail effacé le (déjà effacé)', which reads oddly and is not true. Show 'aucune adresse e-mail' when the email is empty and email_erased_at is missing.", "selector": "[data-testid=testimonial-retention-<id>]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/donner-mon-avis", "issues": ["'Date de votre expérience' uses the browser's native <input type=month>. Its label follows the browser locale (it showed 'September 2026' in English on a French site), and Firefox/Safari desktop support it poorly. Consider a month select or the shadcn picker.", "THIS_MONTH is computed with toISOString() (UTC). Just after midnight on the 1st, French time, the maximum is still the previous month."]},
+      {"screen": "/donner-mon-avis legal note vs backend", "issues": ["The note says 'Tout refus vous est notifié par e-mail avec son motif'. The backend sends nothing for spam/impersonation by default, and at most one email per address every 30 days. Consider rewording the note so it matches what the backend does (the /avis-clients page should say the same)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_reviews_testimonials.py", "/app/backend/tests/test_reviews_extra.py", "/app/backend/tests/ui_setup_reviews.py", "/app/test_reports/pytest/reviews_v2.xml", "/app/test_reports/pytest/reviews_extra.xml"],
+  "action_items": [
+    "LOW: fix the wording 'e-mail effacé le (déjà effacé)' for published reviews that never had an email",
+    "LOW: align the form note ('Tout refus vous est notifié') with the spam/impersonation exception and the 30-day limit",
+    "OPTIONAL: replace the native month input with a localized select or picker; compute THIS_MONTH in local time",
+    "OPTIONAL: compute the 3-year removal with real calendar years"
+  ],
+  "critical_code_review_comments": [
+    "reviews._rate: the count and insert are not atomic, so parallel requests can exceed the limit by a few. Acceptable here.",
+    "reviews._rejection_notice 'limited': the check counts any testimonial with the same email notified in the last 30 days. It is correct, but the author of a second legitimately rejected review gets no reason. This is a deliberate trade-off and should be stated in the policy.",
+    "report_testimonial keeps at most 20 reports ($slice -20) and is limited to 3 per hour per device. No personal data is stored. OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_reviews_extra.py (new)", "/app/backend/tests/ui_setup_reviews.py (new, UI fixture setup/teardown by id)"],
+  "success_rate": {"backend": "100% (38/38)", "frontend": "100% of the flows tested (only cosmetic and wording issues)"},
+  "seed_data_creation": "None kept. The TEST_UIReview testimonial, the TEST-REVIEW-ORDER-UI-* order, its invite and the TEST_UIBuyer review were deleted by id/order_id. Test rate_hits were cleared. site_config testimonials is unchanged {enabled, show_home, show_products: true}. 'Ben' is unchanged (published; no report was added to it).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=<frontend .env> python3 -m pytest tests/test_reviews_testimonials.py tests/test_reviews_extra.py -n 0. For UI: python3 tests/ui_setup_reviews.py setup (it prints the testimonial id and the invitation URL), then teardown. The admin Confiance tab is [data-testid=admin-tab-trust]. Server date is Nov 2026."
+}

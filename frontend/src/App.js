@@ -12,6 +12,7 @@ import Blog from "@/pages/Blog";
 import Article from "@/pages/Article";
 import About from "@/pages/About";
 import Contact from "@/pages/Contact";
+import ReviewPage from "@/pages/ReviewPage";
 import Faq from "@/pages/Faq";
 import Legal from "@/pages/Legal";
 import NewsletterUnsubscribe from "@/pages/NewsletterUnsubscribe";
@@ -39,11 +40,13 @@ function App() {
           <Route path="/ressources/:slug" element={withLayout(<Article />)} />
           <Route path="/a-propos" element={withLayout(<About />)} />
           <Route path="/contact" element={withLayout(<Contact />)} />
+          <Route path="/donner-mon-avis" element={withLayout(<ReviewPage />)} />
           <Route path="/faq" element={withLayout(<Faq />)} />
           <Route path="/mentions-legales" element={withLayout(<Legal pageKey="mentions-legales" />)} />
           <Route path="/cgv" element={withLayout(<Legal pageKey="cgv" />)} />
           <Route path="/confidentialite" element={withLayout(<Legal pageKey="confidentialite" />)} />
           <Route path="/politique-cookies" element={withLayout(<Legal pageKey="politique-cookies" />)} />
+          <Route path="/avis-clients" element={withLayout(<Legal pageKey="avis-clients" />)} />
           <Route path="/produits-numeriques" element={withLayout(<Legal pageKey="produits-numeriques" />)} />
           <Route path="/newsletter/desinscription" element={withLayout(<NewsletterUnsubscribe />)} />
           <Route path="/admin/login" element={<AdminLogin />} />

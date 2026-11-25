@@ -2,13 +2,15 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { LogOut, ShoppingBag, Mail, MessageSquare, Package, Upload, Image as ImageIcon, CheckCircle2, Trash2, Save, FileSpreadsheet, FileText } from "lucide-react";
+import { LogOut, ShoppingBag, Mail, MessageSquare, Package, Upload, Image as ImageIcon, CheckCircle2, Trash2, Save, FileSpreadsheet, FileText, ShieldCheck } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { Seo } from "@/components/Seo";
 import ContentPanel from "@/pages/admin/ContentPanel";
 import NewsletterPanel from "@/pages/admin/NewsletterPanel";
 import MessagesPanel from "@/pages/admin/MessagesPanel";
 import OrdersPanel from "@/pages/admin/OrdersPanel";
+import TrustPanel from "@/pages/admin/TrustPanel";
+import { PromotionEditor } from "@/pages/admin/product/PromotionEditor";
 import SitePagesPanel from "@/pages/admin/site/SitePagesPanel";
 import ArticlesPanel from "@/pages/admin/site/ArticlesPanel";
 import FaqPanel from "@/pages/admin/site/FaqPanel";
@@ -23,6 +25,7 @@ import { formatPrice } from "@/lib/i18n";
 const TABS = [
   { key: "products", label: "Produits", icon: Package },
   { key: "content", label: "Contenu produits", icon: FileText },
+  { key: "trust", label: "Confiance", icon: ShieldCheck },
   { key: "pages", label: "Pages", icon: FileText },
   { key: "articles", label: "Articles", icon: FileText },
   { key: "faq", label: "FAQ", icon: FileText },
@@ -79,6 +82,7 @@ export default function AdminDashboard() {
           <div className="mt-8">
             {tab === "products" && <ProductsPanel qc={qc} />}
             {tab === "content" && <ContentPanel />}
+            {tab === "trust" && <TrustPanel />}
             {tab === "pages" && <SitePagesPanel />}
             {tab === "articles" && <ArticlesPanel />}
             {tab === "faq" && <FaqPanel />}
@@ -168,7 +172,7 @@ function ProductsPanel({ qc }) {
       </p>
       <div className="space-y-4">
         {products.map((p) => (
-          <ProductRow key={p.slug} p={p} health={health.find((h) => h.slug === p.slug)} onSync={syncStripe} onUploadFile={uploadFile} onDeleteFile={deleteFile} onUploadImage={uploadImage} onSavePrice={savePrice} />
+          <ProductRow key={p.slug} p={p} health={health.find((h) => h.slug === p.slug)} onRefresh={refresh} onSync={syncStripe} onUploadFile={uploadFile} onDeleteFile={deleteFile} onUploadImage={uploadImage} onSavePrice={savePrice} />
         ))}
       </div>
     </Panel>
@@ -197,7 +201,7 @@ function ProductHealth({ slug, health, onSync }) {
   );
 }
 
-function ProductRow({ p, health, onSync, onUploadFile, onDeleteFile, onUploadImage, onSavePrice }) {
+function ProductRow({ p, health, onRefresh, onSync, onUploadFile, onDeleteFile, onUploadImage, onSavePrice }) {
   const [price, setPrice] = useState(p.price ?? "");
   useEffect(() => { setPrice(p.price ?? ""); }, [p.price]);
   const available = !!p.purchasable;
@@ -242,6 +246,8 @@ function ProductRow({ p, health, onSync, onUploadFile, onDeleteFile, onUploadIma
           <Save className="h-4 w-4" /> Enregistrer le prix
         </button>
       </div>
+
+      <PromotionEditor p={p} onSaved={onRefresh} />
 
       {/* Fichier + image */}
       <div className="mt-4 flex flex-wrap gap-3">

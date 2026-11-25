@@ -6,6 +6,9 @@ import {
   ExternalLink, ImagePlus, FileText,
 } from "lucide-react";
 import { getProducts, adminUpdateProduct, adminUploadImage, mediaUrl } from "@/lib/api";
+import { inputCls, labelCls, move, IconBtn, AddBtn, IconSelect } from "@/pages/admin/product/ui";
+import { MediaEditor } from "@/pages/admin/product/MediaEditor";
+import { BenefitsEditor, PracticalEditor, ReassuranceExceptions } from "@/pages/admin/product/ProductExtras";
 import { useEditSession, EditModeBar, TrackedLabel, SaveButtons, Modified, Restore, CONFIRM_DISCARD } from "@/pages/admin/site/editTracking";
 
 const toForm = (product) => ({
@@ -18,28 +21,15 @@ const toForm = (product) => ({
   contents: [...(product.contents || [])],
   compatibility: [...(product.compatibility || [])],
   faq: (product.faq || []).map((f) => ({ q: f.q || "", a: f.a || "" })),
-  gallery: (product.gallery || []).map((g, i) => ({ key: g.key || `slot-${i}`, caption: g.caption || "", storage_path: g.storage_path || "", url: g.url || "" })),
+  gallery: (product.gallery || []).map((g, i) => ({ key: g.key || `slot-${i}`, type: g.type === "video" ? "video" : "image", caption: g.caption || "", storage_path: g.storage_path || "", url: g.url || "", poster_path: g.poster_path || "" })),
+  benefits: (product.benefits || []).map((b) => ({ icon: b.icon || "Sparkles", title: b.title || "", text: b.text || "" })),
+  practical: { level: "", license: "", limitations: "", format: "", access: "", ...(product.practical || {}) },
+  reassurance_hidden: [...(product.reassurance_hidden || [])],
+  reassurance_extra: (product.reassurance_extra || []).map((b) => ({ icon: b.icon || "Sparkles", title: b.title || "", text: b.text || "" })),
   seo: { title: product.seo?.title || "", description: product.seo?.description || "" },
   main_image: product.main_image || "",
 });
 const KEYS = Object.keys(toForm({}));
-
-const ICON_OPTIONS = [
-  "Wallet", "Plane", "Home", "Car", "TrendingUp", "Heart", "Backpack", "Dices",
-  "Receipt", "PiggyBank", "Target", "Calendar", "BarChart3", "Sparkles", "Dumbbell",
-  "MapPin", "Fuel", "Wrench", "Users", "Boxes", "ClipboardList", "Activity", "Luggage", "Compass",
-];
-
-const inputCls = "w-full rounded-lg border border-[#E2DDD5] bg-[#FAF8F5] px-3 py-2 text-sm text-[#1E3A2B] focus:border-[#87A987] focus:outline-none disabled:cursor-default disabled:text-[#4A544D]";
-const labelCls = "block text-xs font-medium text-[#626D66] mb-1";
-
-const move = (arr, i, dir) => {
-  const j = i + dir;
-  if (j < 0 || j >= arr.length) return arr;
-  const next = [...arr];
-  [next[i], next[j]] = [next[j], next[i]];
-  return next;
-};
 
 function Section({ title, children, s, k }) {
   return (
@@ -74,24 +64,6 @@ function StringList({ label, items, onChange, testid }) {
       </div>
       <AddBtn testid={`${testid}-add`} onClick={() => onChange([...items, ""])}>Ajouter</AddBtn>
     </div>
-  );
-}
-
-function IconBtn({ children, onClick, danger, title }) {
-  return (
-    <button type="button" onClick={onClick} title={title}
-      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${danger ? "border-[#E7C9C4] text-[#B4453A] hover:bg-[#F7ECEA]" : "border-[#E2DDD5] text-[#2C332E] hover:bg-[#EAF0EC]"}`}>
-      {children}
-    </button>
-  );
-}
-
-function AddBtn({ children, onClick, testid }) {
-  return (
-    <button type="button" onClick={onClick} data-testid={testid}
-      className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#E2DDD5] px-3 py-2 text-sm font-medium text-[#1E3A2B] hover:bg-[#EAF0EC]">
-      <Plus className="h-4 w-4" /> {children}
-    </button>
   );
 }
 
@@ -143,7 +115,7 @@ function ContentEditor({ product, onBack }) {
       </div>
 
       <p className="mt-3 rounded-lg bg-[#EAF0EC] px-4 py-2.5 text-xs text-[#3B6B4C]">
-        L'édition du contenu ne modifie ni le prix, ni la disponibilité, ni le fichier (gérés dans l'onglet Produits).
+        L'édition du contenu ne modifie ni le prix, ni les promotions, ni la disponibilité, ni le fichier (gérés dans l'onglet Produits).
       </p>
 
       <div className="mt-4"><EditModeBar s={s} testid="product" what="la fiche produit" /></div>
@@ -172,15 +144,21 @@ function ContentEditor({ product, onBack }) {
           <div>{lbl("audience", "Texte de présentation (à qui / pourquoi)")}<textarea rows={3} className={inputCls} value={form.audience} data-testid="content-audience" onChange={(e) => set("audience", e.target.value)} /></div>
         </Section>
 
+        <Section title="Images et vidéos" s={s} k="gallery">
+          <MediaEditor list={form.gallery} onChange={(v) => set("gallery", v)} disabled={!s.editing} />
+        </Section>
+
+        <Section title="Bénéfices" s={s} k="benefits">
+          <BenefitsEditor items={form.benefits} onChange={(v) => set("benefits", v)} />
+        </Section>
+
         <Section title="Fonctionnalités" s={s} k="features">
           <div className="space-y-3">
             {form.features.map((f, i) => (
               <div key={i} className="rounded-lg border border-[#E2DDD5] p-3" data-testid={`content-feature-${i}`}>
                 <div className="flex items-center gap-2">
-                  <select className={`${inputCls} w-40`} value={f.icon} data-testid={`content-feature-icon-${i}`}
-                    onChange={(e) => { const n = [...form.features]; n[i] = { ...n[i], icon: e.target.value }; set("features", n); }}>
-                    {ICON_OPTIONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
-                  </select>
+                  <IconSelect value={f.icon} testid={`content-feature-icon-${i}`}
+                    onChange={(v) => { const n = [...form.features]; n[i] = { ...n[i], icon: v }; set("features", n); }} />
                   <input className={inputCls} placeholder="Titre" value={f.title} data-testid={`content-feature-title-${i}`}
                     onChange={(e) => { const n = [...form.features]; n[i] = { ...n[i], title: e.target.value }; set("features", n); }} />
                   <IconBtn onClick={() => set("features", move(form.features, i, -1))} title="Monter"><ArrowUp className="h-4 w-4" /></IconBtn>
@@ -195,39 +173,21 @@ function ContentEditor({ product, onBack }) {
           <AddBtn testid="content-add-feature" onClick={() => set("features", [...form.features, { icon: "Sparkles", title: "", text: "" }])}>Ajouter une fonctionnalité</AddBtn>
         </Section>
 
-        <Section title="Galerie d'images" s={s} k="gallery">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {form.gallery.map((g, i) => (
-              <div key={g.key || i} className="rounded-lg border border-[#E2DDD5] p-3" data-testid={`content-gallery-${i}`}>
-                <div className="aspect-[16/11] overflow-hidden rounded-md border border-[#E2DDD5] bg-[#F2EDE4]">
-                  {(g.storage_path || g.url)
-                    ? <img src={g.url || mediaUrl(g.storage_path)} alt="" className="h-full w-full object-cover" />
-                    : <div className="flex h-full w-full items-center justify-center text-sm text-[#A9772F]">Capture à venir</div>}
-                </div>
-                <input className={`${inputCls} mt-2`} placeholder="Légende" value={g.caption} data-testid={`content-gallery-caption-${i}`}
-                  onChange={(e) => { const n = [...form.gallery]; n[i] = { ...n[i], caption: e.target.value }; set("gallery", n); }} />
-                <div className="mt-2 flex items-center gap-2">
-                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#E2DDD5] px-3 py-2 text-xs font-medium text-[#1E3A2B] hover:bg-[#EAF0EC]">
-                    <ImagePlus className="h-4 w-4" /> {(g.storage_path || g.url) ? "Remplacer" : "Ajouter"}
-                    <input type="file" accept="image/*" className="hidden" data-testid={`content-gallery-upload-${i}`}
-                      onChange={(e) => uploadTo(e.target.files[0], (p) => { const n = [...form.gallery]; n[i] = { ...n[i], storage_path: p, url: "" }; set("gallery", n); })} />
-                  </label>
-                  <IconBtn onClick={() => set("gallery", move(form.gallery, i, -1))} title="Monter"><ArrowUp className="h-4 w-4" /></IconBtn>
-                  <IconBtn onClick={() => set("gallery", move(form.gallery, i, 1))} title="Descendre"><ArrowDown className="h-4 w-4" /></IconBtn>
-                  <IconBtn danger onClick={() => set("gallery", form.gallery.filter((_, k) => k !== i))} title="Supprimer"><Trash2 className="h-4 w-4" /></IconBtn>
-                </div>
-              </div>
-            ))}
-          </div>
-          <AddBtn testid="content-add-gallery" onClick={() => set("gallery", [...form.gallery, { key: `slot-${Date.now()}`, caption: "", storage_path: "" }])}>Ajouter une image</AddBtn>
-        </Section>
-
         <Section title="Ce que vous recevez" s={s} k="contents">
           <StringList label="Éléments inclus" items={form.contents} onChange={(v) => set("contents", v)} testid="content-contents" />
         </Section>
 
         <Section title="Compatibilité" s={s} k="compatibility">
           <StringList label="Compatibilités" items={form.compatibility} onChange={(v) => set("compatibility", v)} testid="content-compatibility" />
+        </Section>
+
+        <Section title="Informations pratiques" s={s} k="practical">
+          <PracticalEditor value={form.practical} onChange={(v) => set("practical", v)} product={product} />
+        </Section>
+
+        <Section title="Réassurance sur cette fiche" s={s} k="reassurance_extra">
+          <ReassuranceExceptions hidden={form.reassurance_hidden} extra={form.reassurance_extra}
+            onHidden={(v) => set("reassurance_hidden", v)} onExtra={(v) => set("reassurance_extra", v)} />
         </Section>
 
         <Section title="FAQ" s={s} k="faq">
@@ -272,7 +232,7 @@ export default function ContentPanel() {
       {!current ? (
         <>
           <p className="mb-4 mt-1 text-sm text-[#626D66]">
-            Gérez le contenu éditorial de chaque fiche produit (textes, fonctionnalités, galerie, FAQ, SEO). Les changements s'affichent immédiatement sur la page publique.
+            Gérez le contenu de chaque fiche produit : textes, images et vidéos, bénéfices, fonctionnalités, informations pratiques, réassurance, FAQ et SEO. Les changements s'affichent immédiatement sur la page publique.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {products.map((p) => (

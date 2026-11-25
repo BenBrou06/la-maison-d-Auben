@@ -18,8 +18,8 @@ _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _HTML = re.compile(r"<\s*/?\s*[a-zA-Z!?]")
 _BAD_URL = re.compile(r"\]\(\s*(javascript|data|vbscript):", re.I)
 MAX_STR = 30000
-PAGE_KEYS = {"home", "shop", "resources", "about", "faq", "contact", "header", "footer", "legal-mentions-legales", "legal-cgv",
-             "legal-confidentialite", "legal-politique-cookies", "legal-produits-numeriques"}
+PAGE_KEYS = {"avis", "home", "shop", "resources", "about", "faq", "contact", "header", "footer", "legal-mentions-legales", "legal-cgv",
+             "legal-confidentialite", "legal-politique-cookies", "legal-produits-numeriques", "legal-avis-clients"}
 
 
 def valid_image(img: str) -> bool:

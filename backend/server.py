@@ -26,6 +26,9 @@ from stripe_keys import select_stripe_keys, preflight_new_live, LIVE_ACCOUNT_ID
 from contact_admin import (router as contact_router, new_job as contact_job, schedule as schedule_contact,
                            start_worker as start_contact_worker, NOTICE_VERSION as CONTACT_NOTICE_VERSION)
 from download_renewal import router as renewal_router, admin_view as download_admin_view
+from reviews import router as reviews_router, purge as purge_reviews, backfill_status as backfill_review_status, \
+    create_invite as create_review_invite
+from merch import router as merch_router, pricing_of, reassurance_for, promo_status
 from storage import put_object, get_object, delete_object, init_storage, APP_NAME, MIME_TYPES
 from emailer import send_email, order_confirmation_html, owner_sale_notification_html
 import seed_data
@@ -245,6 +248,10 @@ class ProductUpdateInput(BaseModel):
     seo: Optional[dict] = None
     gallery: Optional[List[dict]] = None
     main_image: Optional[str] = None
+    benefits: Optional[List[dict]] = None
+    practical: Optional[dict] = None
+    reassurance_hidden: Optional[List[str]] = None
+    reassurance_extra: Optional[List[dict]] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -277,6 +284,9 @@ def with_purchasable(p):
         p["purchasable"] = not commercial_issues(p)
         p["lookup_key"] = lookup_of(p)
         p["currency"] = effective_currency(p, warn=True)
+        p["pricing"] = pricing_of(p)
+        p.pop("promotion", None)
+        p["download_terms"] = {"days": DOWNLOAD_TTL_DAYS, "limit": DOWNLOAD_LIMIT}
     return p
 
 
@@ -294,11 +304,12 @@ async def get_products(category: Optional[str] = None, q: Optional[str] = None, 
     # available first, then coming_soon
     order = {"available": 0, "coming_soon": 1}
     items.sort(key=lambda p: (order.get(p.get("status"), 2), p.get("name", "")))
+    items = [with_purchasable(p) for p in items]
     if sort == "price_asc":
-        items.sort(key=lambda p: p.get("price") or 9999)
+        items.sort(key=lambda p: p["pricing"]["final"] or 9999)
     elif sort == "price_desc":
-        items.sort(key=lambda p: p.get("price") or -1, reverse=True)
-    return [with_purchasable(p) for p in items]
+        items.sort(key=lambda p: p["pricing"]["final"] or -1, reverse=True)
+    return items
 
 
 @api.get("/products/{slug}")
@@ -306,6 +317,7 @@ async def get_product(slug: str):
     p = await db.products.find_one({"slug": slug}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Produit introuvable")
+    p["reassurance"] = await reassurance_for(p)
     return with_purchasable(p)
 
 
@@ -393,74 +405,158 @@ async def contact(request: Request, inp: ContactInput):
 # Media (images publiques servies par le backend, jamais d'URL storage exposée)
 # --------------------------------------------------------------------------- #
 @api.get("/media/{path:path}")
-async def media(path: str):
+async def media(path: str, request: Request):
     record = await db.media.find_one({"storage_path": path, "is_deleted": False})
     if not record:
         raise HTTPException(404, "Fichier introuvable")
-    data, ct = get_object(path)
-    return Response(content=data, media_type=record.get("content_type", ct))
+    ct = record.get("content_type") or ""
+    if ct.startswith("video/"):
+        return _video_response(path, ct, request.headers.get("range"))
+    data, ct2 = get_object(path)
+    return Response(content=data, media_type=ct or ct2)
+
+
+VIDEO_CACHE = "/tmp/auben_video_cache"
+
+
+def _trim_video_cache(keep: str, max_bytes: int = 600 * 1024 * 1024):
+    files = sorted((os.path.join(VIDEO_CACHE, f) for f in os.listdir(VIDEO_CACHE)), key=os.path.getmtime)
+    total = sum(os.path.getsize(f) for f in files)
+    for f in files:
+        if total <= max_bytes:
+            break
+        if f != keep:
+            total -= os.path.getsize(f)
+            os.remove(f)
+
+
+def _video_response(path: str, ct: str, rng: Optional[str]):
+    # Vidéos : cache disque + requêtes partielles (Range), indispensables à la lecture sur iPhone et au déplacement.
+    local = os.path.join(VIDEO_CACHE, re.sub(r"[^A-Za-z0-9._-]", "_", path))
+    if not os.path.exists(local):
+        os.makedirs(VIDEO_CACHE, exist_ok=True)
+        data, _ = get_object(path)
+        tmp = f"{local}.{uuid.uuid4().hex}"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, local)
+        _trim_video_cache(local)
+    size = os.path.getsize(local)
+    headers = {"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"}
+    m = re.match(r"bytes=(\d*)-(\d*)$", (rng or "").strip())
+    if not m or (not m.group(1) and not m.group(2)):
+        start, end, status = 0, size - 1, 200
+    else:
+        if m.group(1):
+            start = int(m.group(1))
+            end = min(int(m.group(2)) if m.group(2) else size - 1, size - 1)
+        else:
+            start, end = max(size - int(m.group(2)), 0), size - 1
+        if start >= size or start > end:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        end = min(end, start + 4 * 1024 * 1024 - 1)
+        status = 206
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    with open(local, "rb") as f:
+        f.seek(start)
+        chunk = f.read(end - start + 1)
+    return Response(content=chunk, status_code=status, media_type=ct, headers=headers)
 
 
 # --------------------------------------------------------------------------- #
 # Payments (Stripe)
 # --------------------------------------------------------------------------- #
-def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = "eur"):
-    """Assure un Product + Price Stripe pour ce lookup_key, à la valeur serveur donnée.
-    Mécanisme identique au catalogue : désactive un Price qui ne correspond pas et le recrée."""
-    product = None
+def _stripe_product(lookup_key: str):
     for p in stripe.Product.list(active=True, limit=100).auto_paging_iter():
         if p.to_dict().get("metadata", {}).get("emergent_product_id") == lookup_key:
-            product = p
-            break
-    if not product:
-        product = stripe.Product.create(
-            name=name, tax_code="txcd_10302000",
-            metadata={"managed_by": "emergent", "emergent_product_id": lookup_key},
-        )
-    amount = int(round(price * 100))
-    existing = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data
-    if existing:
-        e0 = existing[0]
-        if e0.unit_amount != amount or e0.currency != currency or e0.tax_behavior != "inclusive":
-            stripe.Price.modify(e0.id, active=False)
-            existing = []
-    if not existing:
-        stripe.Price.create(
-            product=product.id, unit_amount=amount, currency=currency,
-            lookup_key=lookup_key, transfer_lookup_key=True, tax_behavior="inclusive",
-        )
-
-
-def _startup_price_check(lookup_key: str, price: float, currency: str):
-    """Lecture seule : décrit l'écart éventuel entre le prix en base et le Price Stripe actif."""
-    prices = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data
-    if not prices:
-        return "aucun prix actif"
-    e0 = prices[0]
-    if e0.unit_amount != int(round(price * 100)) or e0.currency != currency or e0.tax_behavior != "inclusive":
-        return f"prix actif {e0.unit_amount} {e0.currency} ({e0.tax_behavior}) ≠ base {int(round(price * 100))} {currency} (inclusive)"
+            return p
     return None
 
 
+def _conforms(pr, amount: int, currency: str) -> bool:
+    return pr.unit_amount == amount and pr.currency == currency and pr.tax_behavior == "inclusive"
+
+
+def _prod_id(pr):
+    return pr.product if isinstance(pr.product, str) else getattr(pr.product, "id", None)
+
+
+def price_diagnostic(lookup_key: str, price: float, currency: str):
+    """Lecture seule, contrôle commun (démarrage, admin, paiement) : None si conforme, sinon explication."""
+    amount = int(round(price * 100))
+    product = _stripe_product(lookup_key)
+    holder = (stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data or [None])[0]
+    conforming = [pr for pr in stripe.Price.list(product=product.id, active=True, limit=100).auto_paging_iter()
+                  if _conforms(pr, amount, currency)] if product else []
+    hint = " Un prix conforme existe déjà chez Stripe : la synchronisation le réutilisera." if conforming and (not holder or holder.id not in {c.id for c in conforming}) else ""
+    if not product:
+        return "aucun produit Stripe associé à cette référence"
+    if not holder:
+        return "aucun prix actif ne porte la référence « " + lookup_key + " »." + hint
+    problems = []
+    if _prod_id(holder) != product.id:
+        problems.append("le prix porteur de la référence appartient à un autre produit Stripe")
+    if holder.unit_amount != amount:
+        problems.append(f"montant {holder.unit_amount / 100:.2f} au lieu de {amount / 100:.2f}")
+    if holder.currency != currency:
+        problems.append(f"devise {holder.currency} au lieu de {currency}")
+    if holder.tax_behavior != "inclusive":
+        problems.append(f"TVA « {holder.tax_behavior} » au lieu de TTC (inclusive)")
+    return ("prix Stripe actif non conforme : " + ", ".join(problems) + "." + hint) if problems else None
+
+
+def sync_stripe_price(lookup_key: str, name: str, price: float, currency: str = "eur"):
+    """Écriture explicite (bouton, modification admin, paiement) : réutilise un prix conforme, n'en crée qu'à défaut,
+    et ne désactive que l'ancien porteur non conforme de la référence."""
+    amount = int(round(price * 100))
+    product = _stripe_product(lookup_key) or stripe.Product.create(
+        name=name, tax_code="txcd_10302000", metadata={"managed_by": "emergent", "emergent_product_id": lookup_key})
+    holder = (stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1).data or [None])[0]
+    if holder and _prod_id(holder) == product.id and _conforms(holder, amount, currency):
+        return
+    reuse = next((pr for pr in stripe.Price.list(product=product.id, active=True, limit=100).auto_paging_iter()
+                  if _conforms(pr, amount, currency)), None)
+    if reuse:
+        stripe.Price.modify(reuse.id, lookup_key=lookup_key, transfer_lookup_key=True)
+        logger.info(f"Stripe : prix conforme réutilisé pour {lookup_key}")
+    else:
+        stripe.Price.create(product=product.id, unit_amount=amount, currency=currency,
+                            lookup_key=lookup_key, transfer_lookup_key=True, tax_behavior="inclusive")
+        logger.info(f"Stripe : nouveau prix créé pour {lookup_key}")
+    if holder:
+        stripe.Price.modify(holder.id, active=False)
+        logger.info(f"Stripe : ancien prix non conforme désactivé pour {lookup_key}")
+
+
 async def ensure_stripe_catalog():
-    # Source de vérité = prix en base (édité via l'admin), jamais le prix du seed.
-    # Production : vérification en lecture seule au démarrage (aucune écriture Stripe LIVE).
-    read_only = _STRIPE["environment"] == "production"
+    # Démarrage strictement sans écriture Stripe (TEST comme LIVE) : écarts signalés, corrigés seulement sur action explicite.
     try:
         async for p in db.products.find({"price": {"$gt": 0},
                                          "download_storage_path": {"$nin": [None, ""]}}, {"_id": 0}):
             if commercial_issues(p) or len(await lookup_owners(db, lookup_of(p))) > 1:
                 logger.warning(f"Catalogue Stripe : {p['slug']} ignoré (fiche incomplète ou référence en double)")
                 continue
-            if read_only:
-                issue = _startup_price_check(lookup_of(p), p["price"], effective_currency(p, warn=True))
-                if issue:
-                    logger.warning(f"Catalogue Stripe (lecture seule) : écart pour {p['slug']} — {issue}. Aucune correction automatique au démarrage.")
-                continue
-            sync_stripe_price(lookup_of(p), p["name"], p["price"], effective_currency(p, warn=True))
-        logger.info("Stripe catalog checked (lecture seule)" if read_only else "Stripe catalog ensured")
+            issue = price_diagnostic(lookup_of(p), p["price"], effective_currency(p, warn=True))
+            if issue:
+                logger.warning(f"Catalogue Stripe (lecture seule) : écart pour {p['slug']} — {issue} Aucune correction automatique au démarrage.")
+        logger.info(f"Stripe catalog checked (lecture seule, env={_STRIPE['environment']})")
     except Exception as e:
-        logger.error(f"Stripe catalog setup failed: {e}")
+        logger.error(f"Stripe catalog check failed: {type(e).__name__}")
+
+
+def promo_coupon(price, discount_cents: int) -> str:
+    """Coupon Stripe à montant fixe (calculé serveur), limité au produit ; le prix catalogue n'est jamais modifié."""
+    product_id = _prod_id(price)
+    cid = f"auben_{price.lookup_key}_{price.currency}_{discount_cents}"
+    try:
+        c = stripe.Coupon.retrieve(cid, expand=["applies_to"])
+    except stripe.error.InvalidRequestError:
+        c = stripe.Coupon.create(id=cid, amount_off=discount_cents, currency=price.currency, duration="once",
+                                 applies_to={"products": [product_id]}, name="Promotion La Maison d'Auben", expand=["applies_to"])
+        logger.info(f"Stripe : coupon promotionnel créé ({cid})")
+    if c.amount_off != discount_cents or c.currency != price.currency or product_id not in ((c.get("applies_to") or {}).get("products") or []):
+        raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
+    return c.id
 
 
 @api.post("/payments/checkout")
@@ -486,14 +582,16 @@ async def create_checkout(request: Request, req: CheckoutInput):
     }
     expected = int(round(product["price"] * 100))
     currency = product.get("currency") or "eur"
-    prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
-    if not prices or prices[0].unit_amount != expected or prices[0].currency != currency:
+    if price_diagnostic(req.lookup_key, product["price"], currency):
         # Le prix Stripe doit toujours être celui affiché sur le site (prix en base).
         sync_stripe_price(req.lookup_key, product["name"], product["price"], currency)
-        prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
+    prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
     if not prices or prices[0].unit_amount != expected:
         raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
     price = prices[0]
+    pricing = pricing_of(product)
+    charged = int(round(pricing["final"] * 100))
+    discounts = [{"coupon": promo_coupon(price, pricing["discount_cents"])}] if pricing["active"] else None
     # SÉCURITÉ : ne jamais utiliser l'origin_url fourni par le client pour des URLs sensibles.
     base = PUBLIC_BASE_URL
     kwargs = dict(
@@ -503,8 +601,11 @@ async def create_checkout(request: Request, req: CheckoutInput):
         cancel_url=f"{base}/paiement/annule",
         metadata={"lookup_key": req.lookup_key, "product_slug": product["slug"] if product else "",
                   "withdrawal_consent_version": WITHDRAWAL_CONSENT_VERSION,
-                  "withdrawal_consent_at": withdrawal_consent["accepted_at"]},
+                  "withdrawal_consent_at": withdrawal_consent["accepted_at"],
+                  "promo_discount_cents": str(pricing.get("discount_cents", 0))},
     )
+    if discounts:
+        kwargs["discounts"] = discounts
     try:
         session = stripe.checkout.Session.create(**kwargs, managed_payments={"enabled": True})
     except stripe.error.InvalidRequestError as e:
@@ -516,10 +617,19 @@ async def create_checkout(request: Request, req: CheckoutInput):
         else:
             logger.error(f"Checkout Stripe error for {req.lookup_key}: {type(e).__name__} code={e.code} msg={e.user_message}")
             raise HTTPException(502, "Paiement momentanément indisponible. Réessayez.")
+    # Le montant facturé par Stripe doit être exactement celui affiché (prix ou prix promotionnel serveur).
+    if session.amount_total != charged:
+        logger.error(f"Checkout {req.lookup_key} : montant Stripe {session.amount_total} ≠ affiché {charged}, session expirée")
+        try:
+            stripe.checkout.Session.expire(session.id)
+        except stripe.error.StripeError:
+            pass
+        raise HTTPException(503, "Paiement momentanément indisponible. Réessayez.")
     await db.payment_transactions.insert_one({
         "session_id": session.id, "lookup_key": req.lookup_key,
         "product_slug": product["slug"] if product else "",
-        "amount": (price.unit_amount or 0) / 100.0, "currency": price.currency,
+        "amount": charged / 100.0, "currency": price.currency,
+        "base_amount": (price.unit_amount or 0) / 100.0, "discount": pricing.get("discount_cents", 0) / 100.0,
         "status": "initiated", "payment_status": "pending",
         "withdrawal_consent": withdrawal_consent,
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -542,6 +652,15 @@ async def _claim_email(sid: str, field: str) -> bool:
     return res.modified_count > 0
 
 
+async def review_invite(order: dict):
+    # Invitation à donner son avis : ne doit jamais bloquer la livraison du produit.
+    try:
+        return await create_review_invite(order, PUBLIC_BASE_URL)
+    except Exception as e:
+        logger.error(f"Review invite error (order {order.get('id')}): {type(e).__name__}")
+        return None
+
+
 async def _send_customer_email(order: dict):
     """Envoi idempotent + rejouable de l'e-mail client (état email_status propre)."""
     sid = order["session_id"]
@@ -560,6 +679,7 @@ async def _send_customer_email(order: dict):
                 product_name=order["product_name"], amount=order["amount"],
                 currency=order["currency"], download_url=download_url, order_id=order["id"],
                 withdrawal_consent=order.get("withdrawal_consent"),
+                review=await review_invite(order),
             ),
         )
         await db.orders.update_one({"session_id": sid}, {"$set": {
@@ -968,15 +1088,11 @@ async def delete_product_file(slug: str, admin=Depends(get_current_admin)):
 
 def _stripe_price_issue(key: str, price: float, currency: str):
     try:
-        prices = stripe.Price.list(lookup_keys=[key], active=True, limit=1).data
+        issue = price_diagnostic(key, price, currency)
     except Exception as e:
         logger.error(f"Diagnostic Stripe impossible pour {key}: {type(e).__name__}")
         return {"code": "stripe_unreachable", "message": "Vérification Stripe impossible pour le moment."}
-    if not prices:
-        return {"code": "stripe_price", "message": "Aucun prix actif chez Stripe pour cette référence."}
-    if prices[0].unit_amount != int(round(price * 100)) or prices[0].currency != currency:
-        return {"code": "stripe_price", "message": "Le prix Stripe actif ne correspond pas au prix enregistré."}
-    return None
+    return {"code": "stripe_price", "message": "Stripe : " + issue[0].upper() + issue[1:]} if issue else None
 
 
 async def _product_health(p: dict) -> dict:
@@ -986,6 +1102,8 @@ async def _product_health(p: dict) -> dict:
         warnings.append("Référence Stripe absente en base (déduite du slug).")
     if not p.get("currency"):
         warnings.append("Devise absente en base (« eur » utilisée par défaut).")
+    if promo_status(p) == "invalid":
+        warnings.append("Promotion activée mais invalide avec le prix actuel : le prix normal reste affiché et facturé.")
     key = effective_lookup(p)
     if key and len(await lookup_owners(db, key)) > 1:
         issues.append({"code": "duplicate", "message": f"Référence Stripe « {key} » utilisée par plusieurs produits."})
@@ -1146,6 +1264,11 @@ async def startup():
     async for sub in db.newsletter.find({"unsubscribe_token": {"$exists": False}}, {"_id": 1}):
         await db.newsletter.update_one({"_id": sub["_id"]}, {"$set": {"unsubscribe_token": secrets.token_urlsafe(32)}})
     await db.orders.create_index("download_token")
+    await db.review_invites.create_index("token_hash")
+    await db.rate_hits.create_index("at", expireAfterSeconds=86400)
+    await db.rate_hits.create_index([("bucket", 1), ("key", 1), ("at", 1)])
+    await backfill_review_status()
+    await purge_reviews()
     await db.orders.create_index("session_id", unique=True)
     await db.payment_transactions.create_index("session_id")
     await seed()
@@ -1175,6 +1298,8 @@ api.include_router(content_router)
 api.include_router(contact_router)
 api.include_router(renewal_router)
 app.include_router(api)
+app.include_router(merch_router)
+app.include_router(reviews_router)
 
 
 @app.middleware("http")

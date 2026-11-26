@@ -229,3 +229,11 @@ Le fichier Excel « Budget mensuel » est actuellement un **PLACEHOLDER .xlsx** 
 - D111-10 à 12 : date de publication + date d'expérience (experience_month, sélecteurs mois/année FR) sur chaque avis ; tri « Les plus récents » (défaut) / « Sélection de la maison » ; mention contrôle/sans contrepartie ; lien « Signaler » (testimonials.reports, 3/h/appareil, admin « Marquer comme examinés ») ; nouvelle page /avis-clients (legal-avis-clients, éditable dans Pages, lien pied de page).
 - « Ben » : absent de Production (vérifié en lecture seule par le deployer ; bases distinctes, aucune copie au redéploiement).
 - Tests : 32 + 6 (test_reviews_testimonials.py, test_reviews_extra.py — à lancer séparément), iteration_25 frontend 100 %.
+
+## 2026-11-26 — Correctif honeypot avis (Preview, non publié)
+- Cause (Production, diagnostic lecture seule) : champ piège « website » rempli par le remplissage auto → 200 sans enregistrement (2 avis perdus).
+- Piège renommé zx_ctrl (non contrôlé, lu par ref) dans un conteneur hors écran aria-hidden + inert, tabIndex -1, autocomplete off + attributs ignore des gestionnaires ; ancien champ website toujours accepté.
+- Piège déclenché ⇒ avis ENREGISTRÉ « En attente » avec suspect=true, suspect_reason=honeypot (champs nouveaux facultatifs, absents = non suspect) ; validation depuis En attente exige confirm_suspect (dialogue de confirmation admin) ; filtre « Suspects » + badge « Suspect – robot possible » ; jamais exposé publiquement.
+- Log WARNING « Review honeypot triggered: path=public|invitation result=stored_pending_suspect | refused http=N » sans donnée personnelle.
+- Message de succès seulement si la réponse contient saved:true ; message d'erreur explicite sinon.
+- Tests : iteration_26 (46/46 backend, UI réelle ordinateur/mobile) + correctif Dépublier sans confirmation.

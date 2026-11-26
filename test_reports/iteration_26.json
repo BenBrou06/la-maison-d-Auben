@@ -1,0 +1,35 @@
+{
+  "summary": "Tested the review honeypot fix in Preview, both backend and real UI. Backend: test_reviews_testimonials.py passed 34/34 and test_reviews_extra.py 6/6. The new tests/test_reviews_honeypot.py passed 6/6. It covers: suspect=false on a normal review; zx_ctrl or the legacy 'website' field stores the review pending with suspect=true and suspect_reason=honeypot; the WARNING logs for result=stored_pending_suspect and result=refused http=400, with no name, email or text on the line; approved without confirm_suspect returns 400, with it 200; pending→published returns 400; duplicate email+product and identical text return 409; elapsed_ms 1000 returns 400; the 4th POST returns 429. Real UI at 1920: a product review and a brand review show the success card and appear in admin under En attente with no badge. A review with the trap filled by JS shows the success card and appears in En attente and in Suspects with the badge 'Suspect – robot possible'. On Valider, dismissing the confirm keeps it En attente; accepting moves it to À publier. Publier works. Public GET /api/testimonials and the home, product and /donner-mon-avis pages never show suspect, suspect_reason or email. The 409 messages show in review-error. Mocked 500 and 200 without saved:true show an explicit error and no success card. Invitation flow: product locked, email masked (t•••@example.com), token removed from the URL. Admin shows 'Lien après achat' and 'Achat vérifié'. Reusing the link shows the 409 banner; an invalid token shows the error banner. A trap-filled invitation submission is stored as suspect, with log path=invitation. Admin counters stay consistent through each step. Reject (toast 'simulé (Preview)'), Réexaminer, Remettre en attente, Dépublier and delete with SUPPRIMER (button disabled until typed) all work. Tab order: name → email → stars 1-5 → month → year → text → consent → submit; the trap is never focused. There is no input named 'website'. Mobile 390 has no horizontal overflow. ONE BUG FOUND AND FIXED: the trap wrapper used inert=\"\". React 19 treats an empty string as false and logs a console error, so the inert attribute was never rendered. I changed it to the boolean `inert` and confirmed hasAttribute('inert') and .inert are both true.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/testimonials/{id}/status", "issue": "Dépublier (published→approved) on a suspect review returns 400 unless confirm_suspect=true. The check `inp.status=='approved' and t.suspect` should only apply when the current status is pending or rejected→pending→approved, not when unpublishing. Unpublishing is a protective action and should never need an authenticity confirmation."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ReviewPage trap wrapper", "issue": "inert=\"\" was rendered as false in React 19, so the attribute was missing and the console showed 'Received an empty string for a boolean attribute inert'. FIXED by the testing agent: changed to `inert`.", "selector": "[data-testid=review-hp]", "priority": "MEDIUM (fixed)"}
+    ],
+    "integration_issues": [
+      {"flow": "Admin Dépublier on a suspect review", "issue": "Clicking Dépublier on a published suspect review opens the window.confirm 'confirmez-vous qu'il est authentique et autorisé à être publié ?'. Dismissing it leaves the review published. The wording does not match the action, and it adds friction to taking a review down. In Row.setStatus, use confirmSuspect = status==='approved' && t.status==='pending' && t.suspect, and align the backend check with cur=='pending'.", "affected_selectors": ["[data-testid^=testimonial-action-approved-]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_reviews_honeypot.py", "/app/backend/tests/test_reviews_testimonials.py", "/app/backend/tests/test_reviews_extra.py", "/app/test_reports/pytest/honeypot_it26.xml", "/app/test_reports/pytest/reviews_it26.xml"],
+  "action_items": [
+    "Restrict the suspect confirmation to validation from pending (backend: `cur == 'pending'`; frontend: `t.status === 'pending'`) so that Dépublier on a suspect review needs no authenticity confirmation.",
+    "Keep the `inert` boolean fix in ReviewPage.jsx (do not revert to inert=\"\")."
+  ],
+  "critical_code_review_comments": [
+    "reviews.py admin_testimonial_status: the suspect check runs for every transition to 'approved', including published→approved (unpublish). It should be limited to pending→approved.",
+    "tests/ui_setup_reviews.py hardcodes BASE URL and admin credentials. Its teardown also deletes testimonials by an email regex (^test_ui_.*@example.com$) and every rate_hits doc in the review buckets, not by id. That is acceptable in Preview, but could remove another concurrent run's data.",
+    "A suspect review still blocks a legitimate resubmission (409, same email and product) while it is pending. That is acceptable, but the admin should review suspects promptly."
+  ],
+  "updated_files": ["/app/frontend/src/pages/ReviewPage.jsx (inert=\"\" -> inert)", "/app/backend/tests/test_reviews_honeypot.py (new)"],
+  "success_rate": {"backend": "100% (46/46 pytest)", "frontend": "~95% (1 bug fixed, 1 minor UX/logic issue on Dépublier for suspect reviews)"},
+  "seed_data_creation": "None kept. All TEST_ testimonials, the test orders and the invites were deleted (teardown plus pytest cleanup by email). rate_hits were cleared only for the review buckets. 'Ben' was not touched (updated_at 2026-11-25). site_config testimonials is still enabled/show_home/show_products = true.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && /etc/supervisor/emergent-env-exec python3 -m pytest tests/test_reviews_honeypot.py tests/test_reviews_testimonials.py tests/test_reviews_extra.py -n 0, with REACT_APP_BACKEND_URL exported. The rate limit is 3 per 10 min, so clear the rate_hits review buckets between UI batches. Admin login is at /admin/login with [data-testid=admin-email-input], [data-testid=admin-password-input] and [data-testid=admin-login-submit], then open [data-testid=admin-tab-trust].",
+  "rca of the issue": "inert: React 19 supports `inert` as a boolean prop, and an empty string is now coerced to false (React 18 passed the string through). As a result the wrapper was not inert; aria-hidden and tabIndex=-1 still kept the trap out of keyboard focus. Dépublier issue: the backend condition `inp.status=='approved' and t.get('suspect')` does not consider the current status."
+}

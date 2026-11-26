@@ -171,7 +171,7 @@ export default function ReviewPage() {
                 <p className="mt-1 text-right text-xs text-[#87A987]">{form.text.length} / 1500</p>
               </div>
               {/* Piège anti-robot : hors écran, inerte (ni clavier, ni lecteur d'écran, ni remplissage automatique). */}
-              <div aria-hidden="true" inert="" style={{ position: "absolute", left: "-10000px", top: "auto", width: 1, height: 1, overflow: "hidden" }}>
+              <div aria-hidden="true" inert style={{ position: "absolute", left: "-10000px", top: "auto", width: 1, height: 1, overflow: "hidden" }}>
                 <label>Ne pas remplir<input ref={trap} type="text" name="zx_ctrl" tabIndex={-1} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" defaultValue="" data-testid="review-hp" /></label>
               </div>
               <label className="flex cursor-pointer items-start gap-3 text-sm text-[#2C332E]">

@@ -122,7 +122,7 @@ function Row({ t, i, items, products, reasons, reportReasons, onEdit, onReject, 
   const reorder = async (dir) => { await adminReorderTestimonials(move(items, i, dir).map((x) => x.id)); refresh(); };
   const setStatus = async (status) => {
     if (status === "rejected") return onReject(t);
-    const confirmSuspect = status === "approved" && t.suspect;
+    const confirmSuspect = status === "approved" && t.status === "pending" && t.suspect;
     if (confirmSuspect && !window.confirm("Cet avis a déclenché la protection anti-robot (« Suspect – robot possible »). Après l'avoir relu, confirmez-vous qu'il est authentique et autorisé à être publié ?")) return;
     try { await adminTestimonialStatus(t.id, { status, confirm_suspect: confirmSuspect }); toast.success(`Statut : ${STATUS[status][0]}.`); refresh(); }
     catch (e) { toast.error(errMsg(e, "Changement de statut impossible.")); }

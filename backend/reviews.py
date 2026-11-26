@@ -467,7 +467,7 @@ async def admin_testimonial_status(tid: str, inp: StatusInput, admin=Depends(get
     if inp.status not in ALLOWED[cur]:
         raise HTTPException(400, "Changement de statut impossible depuis le statut actuel.")
     sets = {"status": inp.status, "status_changed_at": now_iso(), "updated_at": now_iso()}
-    if inp.status == "approved" and t.get("suspect") and not inp.confirm_suspect:
+    if inp.status == "approved" and cur == "pending" and t.get("suspect") and not inp.confirm_suspect:
         raise HTTPException(400, "Avis signalé « Suspect – robot possible » : confirmez votre décision manuelle pour le valider.")
     if inp.status == "approved" and cur == "pending":
         sets["authentic"] = True  # « Valider » = confirmé authentique et autorisé

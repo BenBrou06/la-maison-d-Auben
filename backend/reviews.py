@@ -192,7 +192,8 @@ class ReviewSubmit(BaseModel):
     consent: StrictBool
     experience_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     invitation: str = Field("", max_length=100)
-    website: str = Field("", max_length=200)
+    zx_ctrl: str = Field("", max_length=500)   # champ piège (nom neutre, ignoré par le remplissage automatique)
+    website: str = Field("", max_length=500)   # ancien nom du piège, encore envoyé par d'anciennes pages en cache
     elapsed_ms: int = 0
 
 
@@ -200,8 +201,20 @@ class ReviewSubmit(BaseModel):
 async def submit_review(inp: ReviewSubmit, request: Request):
     await _rate(request, "review", 3, 600)
     await _rate(request, "review-day", 10, 86400)
-    if inp.website.strip():
-        return {"status": "ok"}  # piège à robots : réponse identique, rien n'est enregistré
+    suspect = bool(inp.zx_ctrl.strip() or inp.website.strip())
+    path = "invitation" if inp.invitation else "public"
+    try:
+        result = await _store_review(inp, suspect)
+    except HTTPException as e:
+        if suspect:
+            logger.warning(f"Review honeypot triggered: path={path} result=refused http={e.status_code}")
+        raise
+    if suspect:
+        logger.warning(f"Review honeypot triggered: path={path} result=stored_pending_suspect")
+    return result
+
+
+async def _store_review(inp: ReviewSubmit, suspect: bool) -> dict:
     if inp.elapsed_ms < 3000:
         raise HTTPException(400, "Envoi trop rapide : prenez quelques secondes pour relire votre avis, puis réessayez.")
     if not inp.consent:
@@ -251,9 +264,12 @@ async def submit_review(inp: ReviewSubmit, request: Request):
         "text_hash": text_hash, "consent_at": now_iso(), "consent_version": CONSENT_VERSION,
         "order": (last or {}).get("order", -1) + 1, "created_at": now_iso(), "updated_at": now_iso(),
         "status_changed_at": now_iso(), "anonymized_at": None,
+        "suspect": suspect, "suspect_reason": "honeypot" if suspect else "",
     })
-    await db.testimonials.insert_one(doc)
-    return {"status": "ok"}
+    res = await db.testimonials.insert_one(doc)
+    if not res.acknowledged or not res.inserted_id:
+        raise HTTPException(500, "Votre avis n'a pas pu être enregistré. Réessayez dans un instant.")
+    return {"status": "ok", "saved": True}
 
 
 # --------------------------------------------------------------------------- #
@@ -334,6 +350,7 @@ class StatusInput(BaseModel):
     reason: str = ""
     detail: str = Field("", max_length=500)
     notify: bool = False
+    confirm_suspect: bool = False
 
 
 class ReorderInput(BaseModel):
@@ -450,6 +467,8 @@ async def admin_testimonial_status(tid: str, inp: StatusInput, admin=Depends(get
     if inp.status not in ALLOWED[cur]:
         raise HTTPException(400, "Changement de statut impossible depuis le statut actuel.")
     sets = {"status": inp.status, "status_changed_at": now_iso(), "updated_at": now_iso()}
+    if inp.status == "approved" and t.get("suspect") and not inp.confirm_suspect:
+        raise HTTPException(400, "Avis signalé « Suspect – robot possible » : confirmez votre décision manuelle pour le valider.")
     if inp.status == "approved" and cur == "pending":
         sets["authentic"] = True  # « Valider » = confirmé authentique et autorisé
     if inp.status == "published":

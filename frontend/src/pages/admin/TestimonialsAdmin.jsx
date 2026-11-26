@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowUp, ArrowDown, Trash2, Pencil, Plus, Star, BadgeCheck, Lock, Flag } from "lucide-react";
+import { ArrowUp, ArrowDown, Trash2, Pencil, Plus, Star, BadgeCheck, Lock, Flag, Bot } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   adminTestimonials, adminTestimonialSettings, adminSaveTestimonial, adminDeleteTestimonial,
@@ -18,7 +18,7 @@ const STATUS = {
   rejected: ["Refusé", "bg-[#F7ECEA] text-[#8A2A1F]"],
 };
 const SOURCE = { form: "Formulaire du site", order: "Lien après achat", admin: "Ajouté par vous" };
-const FILTERS = [["pending", "En attente"], ["approved", "À publier"], ["published", "Publiés"], ["rejected", "Refusés"], ["all", "Tous"]];
+const FILTERS = [["pending", "En attente"], ["approved", "À publier"], ["published", "Publiés"], ["rejected", "Refusés"], ["all", "Tous"], ["suspect", "Suspects"]];
 const ACTIONS = {
   pending: [["approved", "Valider", "Confirme que l'avis est authentique et autorisé à être publié"], ["rejected", "Refuser"]],
   approved: [["published", "Publier"], ["pending", "Remettre en attente"], ["rejected", "Refuser"]],
@@ -122,7 +122,9 @@ function Row({ t, i, items, products, reasons, reportReasons, onEdit, onReject, 
   const reorder = async (dir) => { await adminReorderTestimonials(move(items, i, dir).map((x) => x.id)); refresh(); };
   const setStatus = async (status) => {
     if (status === "rejected") return onReject(t);
-    try { await adminTestimonialStatus(t.id, { status }); toast.success(`Statut : ${STATUS[status][0]}.`); refresh(); }
+    const confirmSuspect = status === "approved" && t.suspect;
+    if (confirmSuspect && !window.confirm("Cet avis a déclenché la protection anti-robot (« Suspect – robot possible »). Après l'avoir relu, confirmez-vous qu'il est authentique et autorisé à être publié ?")) return;
+    try { await adminTestimonialStatus(t.id, { status, confirm_suspect: confirmSuspect }); toast.success(`Statut : ${STATUS[status][0]}.`); refresh(); }
     catch (e) { toast.error(errMsg(e, "Changement de statut impossible.")); }
   };
   const anon = !!t.anonymized_at;
@@ -132,6 +134,7 @@ function Row({ t, i, items, products, reasons, reportReasons, onEdit, onReject, 
         <span className={`rounded-full px-2.5 py-0.5 font-semibold ${cls}`} data-testid={`testimonial-status-${t.id}`}>{label}</span>
         <span className="rounded-full bg-[#F2EDE4] px-2.5 py-0.5 text-[#626D66]" data-testid={`testimonial-source-${t.id}`}>{SOURCE[t.source] || SOURCE.admin}</span>
         {t.verified_purchase && <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF0EC] px-2.5 py-0.5 text-[#3B6B4C]"><BadgeCheck className="h-3 w-3" /> Achat vérifié</span>}
+        {t.suspect && <span className="inline-flex items-center gap-1 rounded-full border border-[#E7C9C4] bg-[#FBF3E6] px-2.5 py-0.5 font-medium text-[#8A2A1F]" title="Le champ invisible anti-robot était rempli (robot ou remplissage automatique du navigateur). Relisez l'avis avant toute décision." data-testid={`testimonial-suspect-${t.id}`}><Bot className="h-3 w-3" /> Suspect – robot possible</span>}
         <span className="text-[#87A987]">{t.kind === "product" ? products.find((p) => p.slug === t.product_slug)?.name || t.product_slug : "La Maison d'Auben"} · reçu le {day(t.created_at)}</span>
       </div>
       <p className="mt-2 font-medium text-[#1E3A2B]">{t.name} {t.rating && <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-[#A9772F]"><Star className="h-3 w-3 fill-current" />{t.rating}/5</span>}</p>
@@ -176,9 +179,9 @@ export function TestimonialsAdmin() {
   if (!data) return null;
   const st = data.settings;
   const all = data.items;
-  const count = (s) => all.filter((t) => t.status === s).length;
+  const count = (s) => all.filter((t) => (s === "suspect" ? t.suspect : t.status === s)).length;
   const active = filter || (count("pending") ? "pending" : "all");
-  const items = active === "all" ? all : all.filter((t) => t.status === active);
+  const items = active === "all" ? all : all.filter((t) => (active === "suspect" ? t.suspect : t.status === active));
   const saveSettings = async (patch) => {
     qc.setQueryData(["admin-testimonials"], (d) => ({ ...d, settings: { ...d.settings, ...patch } }));
     await adminTestimonialSettings({ ...st, ...patch }); refresh(); toast.success("Réglage enregistré.");

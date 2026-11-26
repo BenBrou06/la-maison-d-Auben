@@ -72,7 +72,7 @@ const errorText = (e) => {
   const d = e.response?.data?.detail;
   if (typeof d === "string") return d;
   if (Array.isArray(d) && d.some((x) => x.loc?.includes("email"))) return "Adresse e-mail invalide.";
-  return "Une erreur est survenue. Réessayez dans un instant.";
+  return "Votre avis n'a pas pu être enregistré. Réessayez dans un instant ou écrivez-nous depuis la page Contact.";
 };
 
 export default function ReviewPage() {
@@ -85,13 +85,14 @@ export default function ReviewPage() {
     return t || (params.get("produit") ? "" : sessionStorage.getItem("auben-review-invite") || "");
   });
   const [kind, setKind] = useState(params.get("produit") || token ? "product" : "");
-  const [form, setForm] = useState({ product_slug: params.get("produit") || "", name: "", email: "", rating: null, text: "", consent: false, website: "", experience_month: THIS_MONTH });
+  const [form, setForm] = useState({ product_slug: params.get("produit") || "", name: "", email: "", rating: null, text: "", consent: false, experience_month: THIS_MONTH });
   const [invite, setInvite] = useState(null);
   const [inviteError, setInviteError] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const started = useRef(Date.now());
+  const trap = useRef(null);
   const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: () => getProducts() });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -115,7 +116,9 @@ export default function ReviewPage() {
     if (!form.consent) return setError("Cochez la case autorisant la publication de votre témoignage.");
     setSending(true);
     try {
-      await submitReview({ ...form, kind, email: useInvite ? null : form.email.trim(), invitation: useInvite ? token : "", elapsed_ms: Date.now() - started.current });
+      const r = await submitReview({ ...form, kind, email: useInvite ? null : form.email.trim(), invitation: useInvite ? token : "",
+        zx_ctrl: trap.current?.value || "", elapsed_ms: Date.now() - started.current });
+      if (!r?.saved) throw new Error("not saved"); // confirmation affichée seulement si le serveur a enregistré l'avis
       setSent(true);
       sessionStorage.removeItem("auben-review-invite");
     } catch (err) { setError(errorText(err)); }
@@ -144,7 +147,7 @@ export default function ReviewPage() {
               <p className="mt-3 whitespace-pre-line text-[#626D66]">{c.success_text}</p>
             </div>
           ) : (
-            <form onSubmit={submit} noValidate className="card-soft space-y-5 p-6 sm:p-8" data-testid="review-form">
+            <form onSubmit={submit} noValidate className="card-soft relative space-y-5 p-6 sm:p-8" data-testid="review-form">
               {inviteError && <p className="rounded-xl bg-[#F6ECD9] px-4 py-3 text-sm text-[#7A5520]" data-testid="review-invite-error">{inviteError}</p>}
               <KindChoice kind={kind} setKind={setKind} c={c} locked={useInvite} />
               {kind === "product" && (
@@ -167,7 +170,10 @@ export default function ReviewPage() {
                 <textarea maxLength={1500} rows={6} placeholder="Votre témoignage" aria-label="Votre témoignage" value={form.text} onChange={(e) => set("text", e.target.value)} className={field} data-testid="review-text" />
                 <p className="mt-1 text-right text-xs text-[#87A987]">{form.text.length} / 1500</p>
               </div>
-              <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={form.website} onChange={(e) => set("website", e.target.value)} className="absolute -left-[9999px] h-0 w-0 opacity-0" data-testid="review-hp" />
+              {/* Piège anti-robot : hors écran, inerte (ni clavier, ni lecteur d'écran, ni remplissage automatique). */}
+              <div aria-hidden="true" inert="" style={{ position: "absolute", left: "-10000px", top: "auto", width: 1, height: 1, overflow: "hidden" }}>
+                <label>Ne pas remplir<input ref={trap} type="text" name="zx_ctrl" tabIndex={-1} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" defaultValue="" data-testid="review-hp" /></label>
+              </div>
               <label className="flex cursor-pointer items-start gap-3 text-sm text-[#2C332E]">
                 <input type="checkbox" checked={form.consent} onChange={(e) => set("consent", e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#1E3A2B]" data-testid="review-consent" />
                 <span>{c.consent_label}</span>

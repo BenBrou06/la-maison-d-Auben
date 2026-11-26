@@ -99,7 +99,7 @@ class TestPublicSubmit:
     def test_product_review_with_rating(self):
         em = email("prod")
         r = post_review(base(kind="product", product_slug="budget-mensuel", email=em, rating=4))
-        assert r.status_code == 200 and r.json() == {"status": "ok"}
+        assert r.status_code == 200 and r.json() == {"status": "ok", "saved": True}
         docs = stored(em)
         assert len(docs) == 1
         d = docs[0]
@@ -117,11 +117,31 @@ class TestPublicSubmit:
         pub = requests.get(f"{API}/testimonials", params={"place": "home"}).json()
         assert d["id"] not in [t["id"] for t in pub]
 
-    def test_honeypot(self):
-        em = email("hp")
-        r = post_review(base(email=em, website="http://spam"))
-        assert r.status_code == 200 and r.json() == {"status": "ok"}
-        assert stored(em) == []
+    @pytest.mark.parametrize("field", ["zx_ctrl", "website"])
+    def test_honeypot_stores_suspect_pending(self, field, admin):
+        em = email("hp" + field)
+        r = post_review(base(email=em, **{field: "rempli par un robot"}))
+        assert r.status_code == 200 and r.json() == {"status": "ok", "saved": True}
+        d = stored(em)[0]
+        assert d["status"] == "pending" and d["suspect"] is True and d["suspect_reason"] == "honeypot" and d["authentic"] is False
+        CREATED_IDS.add(d["id"])
+        url = f"{API}/admin/testimonials/{d['id']}/status"
+        r = admin.put(url, json={"status": "approved"})
+        assert r.status_code == 400 and "Suspect" in r.json()["detail"]
+        assert admin.put(url, json={"status": "published"}).status_code == 400
+        assert admin.put(url, json={"status": "approved", "confirm_suspect": True}).status_code == 200
+        assert admin.put(url, json={"status": "published"}).status_code == 200
+        orig = mdb.site_config.find_one({"id": "testimonials"}, {"_id": 0}) or {}
+        admin.put(f"{API}/admin/testimonials/settings", json={"enabled": True, "show_home": True, "show_products": True})
+        pub = [x for x in requests.get(f"{API}/testimonials", params={"place": "home"}).json() if x["id"] == d["id"]]
+        assert pub and "suspect" not in pub[0] and "suspect_reason" not in pub[0] and "email" not in pub[0]
+        admin.put(f"{API}/admin/testimonials/settings", json={k: orig.get(k, v) for k, v in (("enabled", False), ("show_home", True), ("show_products", True))})
+
+    def test_normal_submission_not_suspect(self):
+        em = email("normal")
+        assert post_review(base(email=em)).json() == {"status": "ok", "saved": True}
+        d = stored(em)[0]
+        assert d["status"] == "pending" and d["suspect"] is False
 
     @pytest.mark.parametrize("over,code", [
         ({"email": "not-an-email"}, 422),
